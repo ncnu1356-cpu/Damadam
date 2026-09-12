@@ -56,31 +56,55 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> pickAvatar() async {
-    final image = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
-      maxWidth: 1200,
-    );
+    try {
+      final image = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+        maxWidth: 1200,
+      );
 
-    if (image == null) return;
+      if (image == null) return;
 
-    setState(() {
-      _newAvatar = File(image.path);
-    });
+      if (!mounted) return;
+
+      setState(() {
+        _newAvatar = File(image.path);
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not select avatar: $e'),
+        ),
+      );
+    }
   }
 
   Future<void> pickCover() async {
-    final image = await _picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 85,
-      maxWidth: 1600,
-    );
+    try {
+      final image = await _picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85,
+        maxWidth: 1600,
+      );
 
-    if (image == null) return;
+      if (image == null) return;
 
-    setState(() {
-      _newCover = File(image.path);
-    });
+      if (!mounted) return;
+
+      setState(() {
+        _newCover = File(image.path);
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not select cover: $e'),
+        ),
+      );
+    }
   }
 
   Future<String> uploadImage(
@@ -95,23 +119,22 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       throw Exception('User is not logged in.');
     }
 
-    final extension =
-        file.path.split('.').last.toLowerCase();
+    final extension = file.path.contains('.')
+        ? file.path.split('.').last.toLowerCase()
+        : 'jpg';
 
     final fileName =
         '${user.id}_${DateTime.now().millisecondsSinceEpoch}.$extension';
 
     final path = '$folder/$fileName';
 
-    await supabase.storage
-        .from('post-images')
-        .upload(
-          path,
-          file,
-          fileOptions: const FileOptions(
-            upsert: true,
-          ),
-        );
+    await supabase.storage.from('post-images').upload(
+      path,
+      file,
+      fileOptions: FileOptions(
+        upsert: true,
+      ),
+    );
 
     return supabase.storage
         .from('post-images')
@@ -119,19 +142,28 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }
 
   Future<void> saveProfile() async {
-    final username =
-        _usernameController.text.trim();
-
-    final fullName =
-        _nameController.text.trim();
-
-    final bio =
-        _bioController.text.trim();
+    final username = _usernameController.text.trim();
+    final fullName = _nameController.text.trim();
+    final bio = _bioController.text.trim();
 
     if (username.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Username cannot be empty.'),
+        ),
+      );
+      return;
+    }
+
+    // Basic username validation
+    final usernameRegex = RegExp(r'^[a-z0-9_]{3,20}$');
+
+    if (!usernameRegex.hasMatch(username)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Username must be 3-20 characters and use only lowercase letters, numbers, and underscore.',
+          ),
         ),
       );
       return;
@@ -145,6 +177,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       String? avatarUrl;
       String? coverUrl;
 
+      // Upload new avatar
       if (_newAvatar != null) {
         avatarUrl = await uploadImage(
           _newAvatar!,
@@ -152,6 +185,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         );
       }
 
+      // Upload new cover
       if (_newCover != null) {
         coverUrl = await uploadImage(
           _newCover!,
@@ -177,7 +211,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ),
       );
 
-      Navigator.pop(context);
+      Navigator.pop(context, true);
     } catch (e) {
       if (!mounted) return;
 
@@ -218,8 +252,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       body: SingleChildScrollView(
         child: Column(
           children: [
+            // =====================================================
+            // COVER PHOTO
+            // =====================================================
 
-            // COVER
             SizedBox(
               height: 190,
               width: double.infinity,
@@ -236,6 +272,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                             ? Image.network(
                                 oldCover,
                                 fit: BoxFit.cover,
+                                errorBuilder:
+                                    (context, error, stackTrace) {
+                                  return Container(
+                                    color: Colors.blueGrey,
+                                    child: const Center(
+                                      child: Icon(
+                                        Icons.image,
+                                        size: 50,
+                                        color: Colors.white70,
+                                      ),
+                                    ),
+                                  );
+                                },
                               )
                             : Container(
                                 color: Colors.blueGrey,
@@ -249,13 +298,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               ),
                   ),
 
+                  // Cover camera button
                   Positioned(
                     right: 15,
                     top: 15,
                     child: CircleAvatar(
                       backgroundColor: Colors.black54,
                       child: IconButton(
-                        onPressed: pickCover,
+                        onPressed:
+                            _saving ? null : pickCover,
                         icon: const Icon(
                           Icons.camera_alt,
                           color: Colors.white,
@@ -267,7 +318,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
             ),
 
-            // AVATAR
+            // =====================================================
+            // PROFILE AVATAR
+            // =====================================================
+
             Transform.translate(
               offset: const Offset(0, -45),
               child: Stack(
@@ -282,12 +336,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       radius: 62,
                       backgroundColor:
                           Colors.blueGrey.shade100,
-                      backgroundImage: _newAvatar != null
-                          ? FileImage(_newAvatar!)
-                          : oldAvatar != null &&
-                                  oldAvatar.isNotEmpty
-                              ? NetworkImage(oldAvatar)
-                              : null,
+                      backgroundImage:
+                          _newAvatar != null
+                              ? FileImage(_newAvatar!)
+                              : oldAvatar != null &&
+                                      oldAvatar.isNotEmpty
+                                  ? NetworkImage(oldAvatar)
+                                  : null,
                       child: _newAvatar == null &&
                               (oldAvatar == null ||
                                   oldAvatar.isEmpty)
@@ -300,6 +355,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     ),
                   ),
 
+                  // Avatar camera button
                   Positioned(
                     right: 0,
                     bottom: 5,
@@ -308,7 +364,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       backgroundColor: Colors.blue,
                       child: IconButton(
                         padding: EdgeInsets.zero,
-                        onPressed: pickAvatar,
+                        onPressed:
+                            _saving ? null : pickAvatar,
                         icon: const Icon(
                           Icons.camera_alt,
                           size: 18,
@@ -321,24 +378,28 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
             ),
 
-            // FORM
+            // =====================================================
+            // PROFILE FORM
+            // =====================================================
+
             Transform.translate(
               offset: const Offset(0, -25),
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20),
                 child: Column(
                   children: [
-
+                    // Full Name
                     TextField(
                       controller: _nameController,
                       textCapitalization:
                           TextCapitalization.words,
+                      enabled: !_saving,
                       decoration: InputDecoration(
                         labelText: 'Full Name',
-                        prefixIcon:
-                            const Icon(Icons.person_outline),
+                        prefixIcon: const Icon(
+                          Icons.person_outline,
+                        ),
                         border: OutlineInputBorder(
                           borderRadius:
                               BorderRadius.circular(14),
@@ -348,13 +409,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
                     const SizedBox(height: 16),
 
+                    // Username
                     TextField(
                       controller: _usernameController,
+                      enabled: !_saving,
+                      autocorrect: false,
                       decoration: InputDecoration(
                         labelText: 'Username',
                         prefixText: '@ ',
-                        prefixIcon:
-                            const Icon(Icons.alternate_email),
+                        prefixIcon: const Icon(
+                          Icons.alternate_email,
+                        ),
                         border: OutlineInputBorder(
                           borderRadius:
                               BorderRadius.circular(14),
@@ -364,16 +429,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
                     const SizedBox(height: 16),
 
+                    // Bio
                     TextField(
                       controller: _bioController,
+                      enabled: !_saving,
                       maxLines: 4,
                       maxLength: 160,
                       decoration: InputDecoration(
                         labelText: 'Bio',
                         hintText:
                             'Tell people something about you...',
-                        prefixIcon:
-                            const Icon(Icons.info_outline),
+                        prefixIcon: const Icon(
+                          Icons.info_outline,
+                        ),
                         alignLabelWithHint: true,
                         border: OutlineInputBorder(
                           borderRadius:
@@ -384,6 +452,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
                     const SizedBox(height: 10),
 
+                    // Save Button
                     SizedBox(
                       width: double.infinity,
                       height: 52,
@@ -410,7 +479,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                 'Save Changes',
                                 style: TextStyle(
                                   fontSize: 16,
-                                  fontWeight: FontWeight.bold,
+                                  fontWeight:
+                                      FontWeight.bold,
                                 ),
                               ),
                       ),
