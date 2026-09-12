@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -14,6 +15,10 @@ Future<void> main() async {
 }
 
 final supabase = Supabase.instance.client;
+
+// ============================================================
+// APP
+// ============================================================
 
 class DamadamApp extends StatelessWidget {
   const DamadamApp({super.key});
@@ -799,7 +804,7 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 // ============================================================
-// CREATE POST
+// CREATE POST - IMAGE PICKER + SUPABASE STORAGE
 // ============================================================
 
 class CreatePostScreen extends StatefulWidget {
@@ -812,43 +817,162 @@ class CreatePostScreen extends StatefulWidget {
 
 class _CreatePostScreenState extends State<CreatePostScreen> {
   final contentController = TextEditingController();
-  final imageUrlController = TextEditingController();
+
+  final ImagePicker picker = ImagePicker();
+
+  File? selectedImage;
 
   bool loading = false;
 
   @override
   void dispose() {
     contentController.dispose();
-    imageUrlController.dispose();
     super.dispose();
   }
 
+  // ==========================================================
+  // PICK IMAGE
+  // ==========================================================
+
+  Future<void> pickImage(ImageSource source) async {
+    try {
+      final XFile? image = await picker.pickImage(
+        source: source,
+        imageQuality: 85,
+        maxWidth: 2000,
+        maxHeight: 2000,
+      );
+
+      if (image == null) return;
+
+      setState(() {
+        selectedImage = File(image.path);
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not select image: $e'),
+        ),
+      );
+    }
+  }
+
+  // ==========================================================
+  // IMAGE OPTIONS
+  // ==========================================================
+
+  void showImageOptions() {
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const CircleAvatar(
+                  child: Icon(Icons.photo_library_outlined),
+                ),
+                title: const Text('Choose from Gallery'),
+                onTap: () {
+                  Navigator.pop(context);
+                  pickImage(ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: const CircleAvatar(
+                  child: Icon(Icons.camera_alt_outlined),
+                ),
+                title: const Text('Take a Photo'),
+                onTap: () {
+                  Navigator.pop(context);
+                  pickImage(ImageSource.camera);
+                },
+              ),
+              const SizedBox(height: 10),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  // ==========================================================
+  // REMOVE IMAGE
+  // ==========================================================
+
+  void removeImage() {
+    setState(() {
+      selectedImage = null;
+    });
+  }
+
+  // ==========================================================
+  // UPLOAD IMAGE + CREATE POST
+  // ==========================================================
+
   Future<void> submitPost() async {
     final content = contentController.text.trim();
-    final imageUrl = imageUrlController.text.trim();
+    final user = supabase.auth.currentUser;
 
-    if (content.isEmpty && imageUrl.isEmpty) {
+    if (user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Write something or add an image URL.'),
+          content: Text('Please login first.'),
         ),
       );
       return;
     }
 
-    final user = supabase.auth.currentUser;
-
-    if (user == null) {
+    if (content.isEmpty && selectedImage == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Write something or add a photo.'),
+        ),
+      );
       return;
     }
 
-    setState(() => loading = true);
+    setState(() {
+      loading = true;
+    });
 
     try {
+      String? imageUrl;
+
+      // ========================================================
+      // UPLOAD IMAGE TO post-images BUCKET
+      // ========================================================
+
+      if (selectedImage != null) {
+        final fileName =
+            '${user.id}/${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+        await supabase.storage.from('post-images').upload(
+              fileName,
+              selectedImage!,
+              fileOptions: const FileOptions(
+                contentType: 'image/jpeg',
+                upsert: false,
+              ),
+            );
+
+        imageUrl = supabase.storage
+            .from('post-images')
+            .getPublicUrl(fileName);
+      }
+
+      // ========================================================
+      // SAVE POST
+      // ========================================================
+
       await supabase.from('posts').insert({
         'user_id': user.id,
         'content': content,
-        'image_url': imageUrl.isEmpty ? null : imageUrl,
+        'image_url': imageUrl,
       });
 
       if (!mounted) return;
@@ -864,32 +988,56 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
       );
     } finally {
       if (mounted) {
-        setState(() => loading = false);
+        setState(() {
+          loading = false;
+        });
       }
     }
   }
+
+  // ==========================================================
+  // UI
+  // ==========================================================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Create Post'),
+        title: const Text(
+          'Create Post',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: loading ? null : submitPost,
-            child: const Text(
-              'POST',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
+            child: loading
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                    ),
+                  )
+                : const Text(
+                    'POST',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
           ),
         ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(18),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // ==================================================
+            // TEXT
+            // ==================================================
+
             TextField(
               controller: contentController,
               maxLines: 8,
@@ -904,30 +1052,97 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 ),
               ),
             ),
+
             const SizedBox(height: 15),
-            TextField(
-              controller: imageUrlController,
-              decoration: InputDecoration(
-                hintText: 'Image URL (optional)',
-                prefixIcon: const Icon(Icons.image_outlined),
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  borderSide: BorderSide.none,
-                ),
+
+            // ==================================================
+            // IMAGE PREVIEW
+            // ==================================================
+
+            if (selectedImage != null)
+              Stack(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(18),
+                    child: Image.file(
+                      selectedImage!,
+                      width: double.infinity,
+                      height: 280,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  Positioned(
+                    top: 10,
+                    right: 10,
+                    child: CircleAvatar(
+                      backgroundColor:
+                          Colors.black.withOpacity(0.65),
+                      child: IconButton(
+                        onPressed:
+                            loading ? null : removeImage,
+                        icon: const Icon(
+                          Icons.close,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(height: 20),
+
+            const SizedBox(height: 15),
+
+            // ==================================================
+            // ADD PHOTO
+            // ==================================================
+
             SizedBox(
               width: double.infinity,
               height: 52,
+              child: OutlinedButton.icon(
+                onPressed:
+                    loading ? null : showImageOptions,
+                icon: const Icon(
+                  Icons.add_photo_alternate_outlined,
+                ),
+                label: Text(
+                  selectedImage == null
+                      ? 'Add Photo'
+                      : 'Change Photo',
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 15),
+
+            // ==================================================
+            // PUBLISH
+            // ==================================================
+
+            SizedBox(
+              width: double.infinity,
+              height: 54,
               child: FilledButton.icon(
                 onPressed: loading ? null : submitPost,
-                icon: const Icon(Icons.send),
-                label: loading
-                    ? const CircularProgressIndicator()
-                    : const Text('Publish Post'),
+                icon: loading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.send),
+                label: Text(
+                  loading
+                      ? 'Uploading...'
+                      : 'Publish Post',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ),
             ),
           ],
@@ -1018,7 +1233,8 @@ class _PostCardState extends State<PostCard> {
 
         setState(() {
           liked = false;
-          likeCount = likeCount > 0 ? likeCount - 1 : 0;
+          likeCount =
+              likeCount > 0 ? likeCount - 1 : 0;
         });
       } else {
         await supabase.from('likes').insert({
@@ -1079,11 +1295,13 @@ class _PostCardState extends State<PostCard> {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () =>
+                Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () =>
+                Navigator.pop(context, true),
             child: const Text('Delete'),
           ),
         ],
@@ -1144,27 +1362,36 @@ class _PostCardState extends State<PostCard> {
       child: Padding(
         padding: const EdgeInsets.all(15),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
           children: [
+            // ==================================================
+            // USER HEADER
+            // ==================================================
+
             Row(
               children: [
                 CircleAvatar(
                   radius: 23,
-                  backgroundImage: avatarUrl != null &&
-                          avatarUrl.isNotEmpty
-                      ? NetworkImage(avatarUrl)
-                      : null,
-                  child: avatarUrl == null ||
-                          avatarUrl.isEmpty
-                      ? Text(
-                          username.isNotEmpty
-                              ? username[0].toUpperCase()
-                              : 'U',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                          ),
-                        )
-                      : null,
+                  backgroundImage:
+                      avatarUrl != null &&
+                              avatarUrl.isNotEmpty
+                          ? NetworkImage(avatarUrl)
+                          : null,
+                  child:
+                      avatarUrl == null ||
+                              avatarUrl.isEmpty
+                          ? Text(
+                              username.isNotEmpty
+                                  ? username[0]
+                                      .toUpperCase()
+                                  : 'U',
+                              style: const TextStyle(
+                                fontWeight:
+                                    FontWeight.bold,
+                              ),
+                            )
+                          : null,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -1175,7 +1402,8 @@ class _PostCardState extends State<PostCard> {
                       Text(
                         fullName,
                         style: const TextStyle(
-                          fontWeight: FontWeight.bold,
+                          fontWeight:
+                              FontWeight.bold,
                           fontSize: 16,
                         ),
                       ),
@@ -1206,6 +1434,10 @@ class _PostCardState extends State<PostCard> {
               ],
             ),
 
+            // ==================================================
+            // POST TEXT
+            // ==================================================
+
             if (content.isNotEmpty) ...[
               const SizedBox(height: 15),
               Text(
@@ -1217,15 +1449,37 @@ class _PostCardState extends State<PostCard> {
               ),
             ],
 
-            if (imageUrl != null && imageUrl.isNotEmpty) ...[
+            // ==================================================
+            // POST IMAGE
+            // ==================================================
+
+            if (imageUrl != null &&
+                imageUrl.isNotEmpty) ...[
               const SizedBox(height: 15),
               ClipRRect(
-                borderRadius: BorderRadius.circular(15),
+                borderRadius:
+                    BorderRadius.circular(15),
                 child: Image.network(
                   imageUrl,
                   width: double.infinity,
                   fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) {
+                  loadingBuilder:
+                      (context, child, progress) {
+                    if (progress == null) {
+                      return child;
+                    }
+
+                    return Container(
+                      height: 220,
+                      color: Colors.grey.shade100,
+                      child: const Center(
+                        child:
+                            CircularProgressIndicator(),
+                      ),
+                    );
+                  },
+                  errorBuilder:
+                      (_, __, ___) {
                     return Container(
                       height: 150,
                       color: Colors.grey.shade200,
@@ -1243,13 +1497,19 @@ class _PostCardState extends State<PostCard> {
 
             const SizedBox(height: 15),
 
+            // ==================================================
+            // ACTIONS
+            // ==================================================
+
             Row(
               children: [
                 InkWell(
                   onTap: toggleLike,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius:
+                      BorderRadius.circular(20),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(
+                    padding:
+                        const EdgeInsets.symmetric(
                       horizontal: 8,
                       vertical: 6,
                     ),
@@ -1259,8 +1519,9 @@ class _PostCardState extends State<PostCard> {
                           liked
                               ? Icons.favorite
                               : Icons.favorite_border,
-                          color:
-                              liked ? Colors.red : Colors.grey,
+                          color: liked
+                              ? Colors.red
+                              : Colors.grey,
                         ),
                         const SizedBox(width: 5),
                         Text('$likeCount'),
@@ -1271,9 +1532,11 @@ class _PostCardState extends State<PostCard> {
                 const SizedBox(width: 10),
                 InkWell(
                   onTap: openComments,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius:
+                      BorderRadius.circular(20),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(
+                    padding:
+                        const EdgeInsets.symmetric(
                       horizontal: 8,
                       vertical: 6,
                     ),
@@ -1320,8 +1583,10 @@ class CommentsScreen extends StatefulWidget {
       _CommentsScreenState();
 }
 
-class _CommentsScreenState extends State<CommentsScreen> {
-  final commentController = TextEditingController();
+class _CommentsScreenState
+    extends State<CommentsScreen> {
+  final commentController =
+      TextEditingController();
 
   bool loading = true;
   bool sending = false;
@@ -1349,12 +1614,16 @@ class _CommentsScreenState extends State<CommentsScreen> {
             'profiles(username, full_name, avatar_url)',
           )
           .eq('post_id', widget.postId)
-          .order('created_at', ascending: true);
+          .order(
+            'created_at',
+            ascending: true,
+          );
 
       if (!mounted) return;
 
       setState(() {
-        comments = List<Map<String, dynamic>>.from(result);
+        comments =
+            List<Map<String, dynamic>>.from(result);
         loading = false;
       });
     } catch (e) {
@@ -1364,17 +1633,24 @@ class _CommentsScreenState extends State<CommentsScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Could not load comments: $e'),
+          content: Text(
+            'Could not load comments: $e',
+          ),
         ),
       );
     }
   }
 
   Future<void> sendComment() async {
-    final content = commentController.text.trim();
-    final user = supabase.auth.currentUser;
+    final content =
+        commentController.text.trim();
 
-    if (content.isEmpty || user == null || sending) {
+    final user =
+        supabase.auth.currentUser;
+
+    if (content.isEmpty ||
+        user == null ||
+        sending) {
       return;
     }
 
@@ -1395,7 +1671,9 @@ class _CommentsScreenState extends State<CommentsScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Comment failed: $e'),
+          content: Text(
+            'Comment failed: $e',
+          ),
         ),
       );
     } finally {
@@ -1418,7 +1696,9 @@ class _CommentsScreenState extends State<CommentsScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Could not delete comment: $e'),
+          content: Text(
+            'Could not delete comment: $e',
+          ),
         ),
       );
     }
@@ -1426,7 +1706,8 @@ class _CommentsScreenState extends State<CommentsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currentUser = supabase.auth.currentUser;
+    final currentUser =
+        supabase.auth.currentUser;
 
     return Scaffold(
       appBar: AppBar(
@@ -1437,13 +1718,16 @@ class _CommentsScreenState extends State<CommentsScreen> {
           Expanded(
             child: loading
                 ? const Center(
-                    child: CircularProgressIndicator(),
+                    child:
+                        CircularProgressIndicator(),
                   )
                 : comments.isEmpty
                     ? const Center(
                         child: Text(
-                          'No comments yet.\nBe the first to comment!',
-                          textAlign: TextAlign.center,
+                          'No comments yet.\n'
+                          'Be the first to comment!',
+                          textAlign:
+                              TextAlign.center,
                           style: TextStyle(
                             color: Colors.grey,
                             fontSize: 16,
@@ -1451,10 +1735,15 @@ class _CommentsScreenState extends State<CommentsScreen> {
                         ),
                       )
                     : ListView.builder(
-                        padding: const EdgeInsets.all(12),
-                        itemCount: comments.length,
-                        itemBuilder: (_, index) {
-                          final comment = comments[index];
+                        padding:
+                            const EdgeInsets.all(12),
+                        itemCount:
+                            comments.length,
+                        itemBuilder:
+                            (_, index) {
+                          final comment =
+                              comments[index];
+
                           final profile =
                               comment['profiles'];
 
@@ -1474,28 +1763,35 @@ class _CommentsScreenState extends State<CommentsScreen> {
 
                           final content =
                               comment['content']
-                                  ?.toString() ??
+                                      ?.toString() ??
                                   '';
 
                           final id =
-                              comment['id'].toString();
+                              comment['id']
+                                  .toString();
 
                           return Card(
                             elevation: 0,
                             color: Colors.white,
                             child: ListTile(
-                              leading: CircleAvatar(
+                              leading:
+                                  CircleAvatar(
                                 backgroundImage:
-                                    avatarUrl != null &&
-                                            avatarUrl.isNotEmpty
+                                    avatarUrl !=
+                                                null &&
+                                            avatarUrl
+                                                .isNotEmpty
                                         ? NetworkImage(
                                             avatarUrl,
                                           )
                                         : null,
-                                child: avatarUrl == null ||
-                                        avatarUrl.isEmpty
+                                child: avatarUrl ==
+                                            null ||
+                                        avatarUrl
+                                            .isEmpty
                                     ? Text(
-                                        username.isNotEmpty
+                                        username
+                                                .isNotEmpty
                                             ? username[0]
                                                 .toUpperCase()
                                             : 'U',
@@ -1504,23 +1800,27 @@ class _CommentsScreenState extends State<CommentsScreen> {
                               ),
                               title: Text(
                                 fullName,
-                                style: const TextStyle(
+                                style:
+                                    const TextStyle(
                                   fontWeight:
                                       FontWeight.bold,
                                 ),
                               ),
-                              subtitle: Text(
-                                content,
-                              ),
+                              subtitle:
+                                  Text(content),
                               trailing:
                                   currentUser?.id ==
-                                          comment['user_id']
+                                          comment[
+                                              'user_id']
                                       ? IconButton(
-                                          icon: const Icon(
-                                            Icons.delete_outline,
+                                          icon:
+                                              const Icon(
+                                            Icons
+                                                .delete_outline,
                                           ),
                                           onPressed: () =>
-                                              deleteComment(id),
+                                              deleteComment(
+                                                  id),
                                         )
                                       : null,
                             ),
@@ -1529,9 +1829,14 @@ class _CommentsScreenState extends State<CommentsScreen> {
                       ),
           ),
 
+          // ==================================================
+          // COMMENT INPUT
+          // ==================================================
+
           SafeArea(
             child: Container(
-              padding: const EdgeInsets.fromLTRB(
+              padding:
+                  const EdgeInsets.fromLTRB(
                 12,
                 8,
                 12,
@@ -1542,20 +1847,27 @@ class _CommentsScreenState extends State<CommentsScreen> {
                 children: [
                   Expanded(
                     child: TextField(
-                      controller: commentController,
+                      controller:
+                          commentController,
                       textInputAction:
                           TextInputAction.send,
                       onSubmitted: (_) =>
                           sendComment(),
-                      decoration: InputDecoration(
-                        hintText: 'Write a comment...',
+                      decoration:
+                          InputDecoration(
+                        hintText:
+                            'Write a comment...',
                         filled: true,
                         fillColor:
-                            const Color(0xfff1f3f6),
-                        border: OutlineInputBorder(
+                            const Color(
+                                0xfff1f3f6),
+                        border:
+                            OutlineInputBorder(
                           borderRadius:
-                              BorderRadius.circular(25),
-                          borderSide: BorderSide.none,
+                              BorderRadius.circular(
+                                  25),
+                          borderSide:
+                              BorderSide.none,
                         ),
                       ),
                     ),
@@ -1565,7 +1877,9 @@ class _CommentsScreenState extends State<CommentsScreen> {
                     radius: 24,
                     child: IconButton(
                       onPressed:
-                          sending ? null : sendComment,
+                          sending
+                              ? null
+                              : sendComment,
                       icon: sending
                           ? const SizedBox(
                               width: 18,
@@ -1575,7 +1889,9 @@ class _CommentsScreenState extends State<CommentsScreen> {
                                 strokeWidth: 2,
                               ),
                             )
-                          : const Icon(Icons.send),
+                          : const Icon(
+                              Icons.send,
+                            ),
                     ),
                   ),
                 ],
