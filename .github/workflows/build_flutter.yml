@@ -1,0 +1,38 @@
+name: Create Damadam Flutter App
+
+on:
+  workflow_dispatch:
+    push:
+        branches:
+              - main
+
+              permissions:
+                contents: write
+
+                jobs:
+                  setup:
+                      runs-on: ubuntu-latest
+
+                          steps:
+                                - name: Checkout repository
+                                        uses: actions/checkout@v4
+
+                                              - name: Setup Flutter
+                                                      uses: subosito/flutter-action@v2
+                                                              with:
+                                                                        channel: stable
+
+                                                                              - name: Create Flutter project
+                                                                                      run: |
+                                                                                                if [ ! -f pubspec.yaml ]; then
+                                                                                                            flutter create . --project-name damadam --org com.damadam
+                                                                                                                      fi
+
+                                                                                                                            - name: Commit Flutter project
+                                                                                                                                    run: |
+                                                                                                                                              git config user.name "Damadam Bot"
+                                                                                                                                                        git config user.email "actions@github.com"
+                                                                                                                                                                  git add .
+                                                                                                                                                                            git diff --cached --quiet || git commit -m "Initialize Damadam Flutter app"
+                                                                                                                                                                                      git pushInitialize Damadam Flutter App
+                                                                                                                                                                                      
