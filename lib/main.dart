@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
+
+import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -14,7 +15,7 @@ Future<void> main() async {
   runApp(const DamadamApp());
 }
 
-final supabase = Supabase.instance.client;
+final SupabaseClient supabase = Supabase.instance.client;
 
 // ============================================================
 // APP
@@ -32,7 +33,7 @@ class DamadamApp extends StatelessWidget {
         useMaterial3: true,
         colorSchemeSeed: Colors.blue,
         brightness: Brightness.light,
-        scaffoldBackgroundColor: const Color(0xfff5f7fb),
+        scaffoldBackgroundColor: const Color(0xFFF5F7FB),
       ),
       home: const AuthGate(),
     );
@@ -206,7 +207,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
       return;
     }
 
-    setState(() => loading = true);
+    setState(() {
+      loading = true;
+    });
 
     try {
       final existing = await supabase
@@ -217,7 +220,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
       if (existing != null) {
         showMessage('Username already exists.');
-        setState(() => loading = false);
         return;
       }
 
@@ -240,38 +242,47 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
       if (!mounted) return;
 
-      showDialog(
+      await showDialog<void>(
         context: context,
         barrierDismissible: false,
-        builder: (_) => AlertDialog(
-          title: const Text('Account Created 🎉'),
-          content: const Text(
-            'Your account has been created successfully. '
-            'Please verify your email if email verification is enabled.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.pop(context);
-              },
-              child: const Text('Continue'),
+        builder: (_) {
+          return AlertDialog(
+            title: const Text('Account Created'),
+            content: const Text(
+              'Your account has been created successfully. '
+              'Please verify your email if email verification is enabled.',
             ),
-          ],
-        ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                },
+                child: const Text('Continue'),
+              ),
+            ],
+          );
+        },
       );
+
+      if (!mounted) return;
+
+      Navigator.pop(context);
     } on AuthException catch (e) {
       showMessage(e.message);
     } catch (e) {
       showMessage('Something went wrong: $e');
     } finally {
       if (mounted) {
-        setState(() => loading = false);
+        setState(() {
+          loading = false;
+        });
       }
     }
   }
 
   void showMessage(String message) {
+    if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
@@ -280,7 +291,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Create Account')),
+      appBar: AppBar(
+        title: const Text('Create Account'),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(22),
@@ -300,37 +313,51 @@ class _SignUpScreenState extends State<SignUpScreen> {
                 style: TextStyle(color: Colors.grey),
               ),
               const SizedBox(height: 30),
+
               TextField(
                 controller: usernameController,
+                textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
                   labelText: 'Username',
                   prefixIcon: Icon(Icons.alternate_email),
+                  border: OutlineInputBorder(),
                 ),
               ),
+
               const SizedBox(height: 15),
+
               TextField(
                 controller: fullNameController,
+                textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
                   labelText: 'Full Name',
                   prefixIcon: Icon(Icons.person_outline),
+                  border: OutlineInputBorder(),
                 ),
               ),
+
               const SizedBox(height: 15),
+
               TextField(
                 controller: emailController,
                 keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
                   labelText: 'Email',
                   prefixIcon: Icon(Icons.email_outlined),
+                  border: OutlineInputBorder(),
                 ),
               ),
+
               const SizedBox(height: 15),
+
               TextField(
                 controller: passwordController,
                 obscureText: obscurePassword,
                 decoration: InputDecoration(
                   labelText: 'Password',
                   prefixIcon: const Icon(Icons.lock_outline),
+                  border: const OutlineInputBorder(),
                   suffixIcon: IconButton(
                     onPressed: () {
                       setState(() {
@@ -345,13 +372,16 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                 ),
               ),
+
               const SizedBox(height: 15),
+
               TextField(
                 controller: confirmPasswordController,
                 obscureText: obscureConfirmPassword,
                 decoration: InputDecoration(
                   labelText: 'Confirm Password',
                   prefixIcon: const Icon(Icons.lock_outline),
+                  border: const OutlineInputBorder(),
                   suffixIcon: IconButton(
                     onPressed: () {
                       setState(() {
@@ -367,7 +397,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                 ),
               ),
+
               const SizedBox(height: 25),
+
               SizedBox(
                 width: double.infinity,
                 height: 55,
@@ -413,6 +445,13 @@ class _LoginScreenState extends State<LoginScreen> {
   bool loading = false;
   bool obscurePassword = true;
 
+  @override
+  void dispose() {
+    emailController.dispose();
+    passwordController.dispose();
+    super.dispose();
+  }
+
   Future<void> login() async {
     final email = emailController.text.trim();
     final password = passwordController.text;
@@ -422,7 +461,9 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    setState(() => loading = true);
+    setState(() {
+      loading = true;
+    });
 
     try {
       await supabase.auth.signInWithPassword(
@@ -442,15 +483,19 @@ class _LoginScreenState extends State<LoginScreen> {
     } on AuthException catch (e) {
       showMessage(e.message);
     } catch (e) {
-      showMessage('Login failed.');
+      showMessage('Login failed: $e');
     } finally {
       if (mounted) {
-        setState(() => loading = false);
+        setState(() {
+          loading = false;
+        });
       }
     }
   }
 
   void showMessage(String message) {
+    if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
@@ -459,19 +504,24 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Login')),
+      appBar: AppBar(
+        title: const Text('Login'),
+      ),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(22),
           child: Column(
             children: [
               const SizedBox(height: 30),
+
               const Icon(
                 Icons.lock_open_rounded,
                 size: 70,
                 color: Colors.blue,
               ),
+
               const SizedBox(height: 20),
+
               const Text(
                 'Welcome Back',
                 style: TextStyle(
@@ -479,22 +529,28 @@ class _LoginScreenState extends State<LoginScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
+
               const SizedBox(height: 30),
+
               TextField(
                 controller: emailController,
                 keyboardType: TextInputType.emailAddress,
                 decoration: const InputDecoration(
                   labelText: 'Email',
                   prefixIcon: Icon(Icons.email_outlined),
+                  border: OutlineInputBorder(),
                 ),
               ),
+
               const SizedBox(height: 15),
+
               TextField(
                 controller: passwordController,
                 obscureText: obscurePassword,
                 decoration: InputDecoration(
                   labelText: 'Password',
                   prefixIcon: const Icon(Icons.lock_outline),
+                  border: const OutlineInputBorder(),
                   suffixIcon: IconButton(
                     onPressed: () {
                       setState(() {
@@ -509,6 +565,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
+
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
@@ -524,14 +581,22 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: const Text('Forgot Password?'),
                 ),
               ),
+
               const SizedBox(height: 10),
+
               SizedBox(
                 width: double.infinity,
                 height: 55,
                 child: FilledButton(
                   onPressed: loading ? null : login,
                   child: loading
-                      ? const CircularProgressIndicator()
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
                       : const Text(
                           'Login',
                           style: TextStyle(fontSize: 17),
@@ -564,6 +629,12 @@ class _ForgotPasswordScreenState
 
   bool loading = false;
 
+  @override
+  void dispose() {
+    emailController.dispose();
+    super.dispose();
+  }
+
   Future<void> resetPassword() async {
     final email = emailController.text.trim();
 
@@ -572,7 +643,9 @@ class _ForgotPasswordScreenState
       return;
     }
 
-    setState(() => loading = true);
+    setState(() {
+      loading = true;
+    });
 
     try {
       await supabase.auth.resetPasswordForEmail(email);
@@ -585,15 +658,19 @@ class _ForgotPasswordScreenState
     } on AuthException catch (e) {
       showMessage(e.message);
     } catch (e) {
-      showMessage('Could not send reset email.');
+      showMessage('Could not send reset email: $e');
     } finally {
       if (mounted) {
-        setState(() => loading = false);
+        setState(() {
+          loading = false;
+        });
       }
     }
   }
 
   void showMessage(String message) {
+    if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message)),
     );
@@ -602,45 +679,63 @@ class _ForgotPasswordScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Forgot Password')),
-      body: Padding(
-        padding: const EdgeInsets.all(22),
-        child: Column(
-          children: [
-            const SizedBox(height: 30),
-            const Text(
-              'Reset Password',
-              style: TextStyle(
-                fontSize: 30,
-                fontWeight: FontWeight.bold,
+      appBar: AppBar(
+        title: const Text('Forgot Password'),
+      ),
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            children: [
+              const SizedBox(height: 30),
+
+              const Text(
+                'Reset Password',
+                style: TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Enter your email and we will send you a password reset link.',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 30),
-            TextField(
-              controller: emailController,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: 'Email',
-                prefixIcon: Icon(Icons.email_outlined),
+
+              const SizedBox(height: 10),
+
+              const Text(
+                'Enter your email and we will send you a password reset link.',
+                textAlign: TextAlign.center,
               ),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: FilledButton(
-                onPressed: loading ? null : resetPassword,
-                child: loading
-                    ? const CircularProgressIndicator()
-                    : const Text('Send Reset Link'),
+
+              const SizedBox(height: 30),
+
+              TextField(
+                controller: emailController,
+                keyboardType: TextInputType.emailAddress,
+                decoration: const InputDecoration(
+                  labelText: 'Email',
+                  prefixIcon: Icon(Icons.email_outlined),
+                  border: OutlineInputBorder(),
+                ),
               ),
-            ),
-          ],
+
+              const SizedBox(height: 20),
+
+              SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: FilledButton(
+                  onPressed: loading ? null : resetPassword,
+                  child: loading
+                      ? const SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        )
+                      : const Text('Send Reset Link'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -660,6 +755,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool loading = true;
+
   List<Map<String, dynamic>> posts = [];
 
   @override
@@ -670,45 +766,54 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> loadPosts() async {
     try {
-      final result = await supabase
+      final data = await supabase
           .from('posts')
           .select(
             'id, user_id, content, image_url, created_at, '
             'profiles(username, full_name, avatar_url)',
           )
-          .order('created_at', ascending: false);
+          .order(
+            'created_at',
+            ascending: false,
+          );
+
+      final result = List<Map<String, dynamic>>.from(data);
 
       if (!mounted) return;
 
       setState(() {
-        posts = List<Map<String, dynamic>>.from(result);
+        posts = result;
         loading = false;
       });
     } catch (e) {
       if (!mounted) return;
 
-      setState(() => loading = false);
+      setState(() {
+        loading = false;
+      });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not load posts: $e'),
-        ),
+      showMessage(
+        'Could not load posts: $e',
       );
     }
   }
 
   Future<void> logout() async {
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
 
-    if (!mounted) return;
+      if (!mounted) return;
 
-    Navigator.pushAndRemoveUntil(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const WelcomeScreen(),
-      ),
-      (route) => false,
-    );
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const WelcomeScreen(),
+        ),
+        (route) => false,
+      );
+    } catch (e) {
+      showMessage('Logout failed: $e');
+    }
   }
 
   Future<void> createPost() async {
@@ -719,9 +824,17 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    if (result == true) {
+    if (result == true && mounted) {
       await loadPosts();
     }
+  }
+
+  void showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   @override
@@ -740,7 +853,9 @@ class _HomeScreenState extends State<HomeScreen> {
         actions: [
           IconButton(
             onPressed: createPost,
-            icon: const Icon(Icons.add_circle_outline),
+            icon: const Icon(
+              Icons.add_circle_outline,
+            ),
           ),
           IconButton(
             onPressed: logout,
@@ -748,6 +863,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
+
       body: RefreshIndicator(
         onRefresh: loadPosts,
         child: loading
@@ -756,6 +872,8 @@ class _HomeScreenState extends State<HomeScreen> {
               )
             : posts.isEmpty
                 ? ListView(
+                    physics:
+                        const AlwaysScrollableScrollPhysics(),
                     children: const [
                       SizedBox(height: 180),
                       Icon(
@@ -777,24 +895,30 @@ class _HomeScreenState extends State<HomeScreen> {
                       Center(
                         child: Text(
                           'Be the first person to create a post.',
-                          style: TextStyle(color: Colors.grey),
+                          style: TextStyle(
+                            color: Colors.grey,
+                          ),
                         ),
                       ),
                     ],
                   )
                 : ListView.builder(
+                    physics:
+                        const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.symmetric(
                       vertical: 10,
                     ),
                     itemCount: posts.length,
                     itemBuilder: (context, index) {
                       return PostCard(
+                        key: ValueKey(posts[index]['id']),
                         post: posts[index],
                         onDeleted: loadPosts,
                       );
                     },
                   ),
       ),
+
       floatingActionButton: FloatingActionButton(
         onPressed: createPost,
         child: const Icon(Icons.edit),
@@ -804,7 +928,7 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 // ============================================================
-// CREATE POST - IMAGE PICKER + SUPABASE STORAGE
+// CREATE POST
 // ============================================================
 
 class CreatePostScreen extends StatefulWidget {
@@ -815,8 +939,10 @@ class CreatePostScreen extends StatefulWidget {
       _CreatePostScreenState();
 }
 
-class _CreatePostScreenState extends State<CreatePostScreen> {
-  final contentController = TextEditingController();
+class _CreatePostScreenState
+    extends State<CreatePostScreen> {
+  final TextEditingController contentController =
+      TextEditingController();
 
   final ImagePicker picker = ImagePicker();
 
@@ -845,16 +971,16 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 
       if (image == null) return;
 
+      if (!mounted) return;
+
       setState(() {
         selectedImage = File(image.path);
       });
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not select image: $e'),
-        ),
+      showMessage(
+        'Could not select image: $e',
       );
     }
   }
@@ -864,31 +990,39 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   // ==========================================================
 
   void showImageOptions() {
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
-      builder: (context) {
+      builder: (bottomSheetContext) {
         return SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               ListTile(
                 leading: const CircleAvatar(
-                  child: Icon(Icons.photo_library_outlined),
+                  child: Icon(
+                    Icons.photo_library_outlined,
+                  ),
                 ),
-                title: const Text('Choose from Gallery'),
+                title: const Text(
+                  'Choose from Gallery',
+                ),
                 onTap: () {
-                  Navigator.pop(context);
+                  Navigator.pop(bottomSheetContext);
                   pickImage(ImageSource.gallery);
                 },
               ),
               ListTile(
                 leading: const CircleAvatar(
-                  child: Icon(Icons.camera_alt_outlined),
+                  child: Icon(
+                    Icons.camera_alt_outlined,
+                  ),
                 ),
-                title: const Text('Take a Photo'),
+                title: const Text(
+                  'Take a Photo',
+                ),
                 onTap: () {
-                  Navigator.pop(context);
+                  Navigator.pop(bottomSheetContext);
                   pickImage(ImageSource.camera);
                 },
               ),
@@ -905,33 +1039,31 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
   // ==========================================================
 
   void removeImage() {
+    if (!mounted) return;
+
     setState(() {
       selectedImage = null;
     });
   }
 
   // ==========================================================
-  // UPLOAD IMAGE + CREATE POST
+  // SUBMIT POST
   // ==========================================================
 
   Future<void> submitPost() async {
+    if (loading) return;
+
     final content = contentController.text.trim();
     final user = supabase.auth.currentUser;
 
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please login first.'),
-        ),
-      );
+      showMessage('Please login first.');
       return;
     }
 
     if (content.isEmpty && selectedImage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Write something or add a photo.'),
-        ),
+      showMessage(
+        'Write something or add a photo.',
       );
       return;
     }
@@ -943,15 +1075,17 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     try {
       String? imageUrl;
 
-      // ========================================================
-      // UPLOAD IMAGE TO post-images BUCKET
-      // ========================================================
+      // ------------------------------------------------------
+      // IMAGE UPLOAD
+      // ------------------------------------------------------
 
       if (selectedImage != null) {
         final fileName =
             '${user.id}/${DateTime.now().millisecondsSinceEpoch}.jpg';
 
-        await supabase.storage.from('post-images').upload(
+        await supabase.storage
+            .from('post-images')
+            .upload(
               fileName,
               selectedImage!,
               fileOptions: const FileOptions(
@@ -965,9 +1099,9 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
             .getPublicUrl(fileName);
       }
 
-      // ========================================================
-      // SAVE POST
-      // ========================================================
+      // ------------------------------------------------------
+      // INSERT POST
+      // ------------------------------------------------------
 
       await supabase.from('posts').insert({
         'user_id': user.id,
@@ -981,10 +1115,8 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Post failed: $e'),
-        ),
+      showMessage(
+        'Post failed: $e',
       );
     } finally {
       if (mounted) {
@@ -993,6 +1125,14 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
         });
       }
     }
+  }
+
+  void showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   // ==========================================================
@@ -1029,123 +1169,133 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ==================================================
-            // TEXT
-            // ==================================================
 
-            TextField(
-              controller: contentController,
-              maxLines: 8,
-              maxLength: 1000,
-              decoration: InputDecoration(
-                hintText: "What's on your mind?",
-                filled: true,
-                fillColor: Colors.white,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  borderSide: BorderSide.none,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: contentController,
+                maxLines: 8,
+                maxLength: 1000,
+                textCapitalization:
+                    TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  hintText:
+                      "What's on your mind?",
+                  filled: true,
+                  fillColor: Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius:
+                        BorderRadius.circular(18),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
               ),
-            ),
 
-            const SizedBox(height: 15),
+              const SizedBox(height: 15),
 
-            // ==================================================
-            // IMAGE PREVIEW
-            // ==================================================
+              // ------------------------------------------------
+              // IMAGE PREVIEW
+              // ------------------------------------------------
 
-            if (selectedImage != null)
-              Stack(
-                children: [
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(18),
-                    child: Image.file(
-                      selectedImage!,
-                      width: double.infinity,
-                      height: 280,
-                      fit: BoxFit.cover,
+              if (selectedImage != null)
+                Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius:
+                          BorderRadius.circular(18),
+                      child: Image.file(
+                        selectedImage!,
+                        width: double.infinity,
+                        height: 280,
+                        fit: BoxFit.cover,
+                      ),
                     ),
-                  ),
-                  Positioned(
-                    top: 10,
-                    right: 10,
-                    child: CircleAvatar(
-                      backgroundColor:
-                          Colors.black.withOpacity(0.65),
-                      child: IconButton(
-                        onPressed:
-                            loading ? null : removeImage,
-                        icon: const Icon(
-                          Icons.close,
-                          color: Colors.white,
+
+                    Positioned(
+                      top: 10,
+                      right: 10,
+                      child: CircleAvatar(
+                        backgroundColor:
+                            Colors.black.withAlpha(170),
+                        child: IconButton(
+                          onPressed: loading
+                              ? null
+                              : removeImage,
+                          icon: const Icon(
+                            Icons.close,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),
+                  ],
+                ),
+
+              const SizedBox(height: 15),
+
+              // ------------------------------------------------
+              // ADD PHOTO
+              // ------------------------------------------------
+
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: OutlinedButton.icon(
+                  onPressed: loading
+                      ? null
+                      : showImageOptions,
+                  icon: const Icon(
+                    Icons.add_photo_alternate_outlined,
                   ),
-                ],
-              ),
-
-            const SizedBox(height: 15),
-
-            // ==================================================
-            // ADD PHOTO
-            // ==================================================
-
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: OutlinedButton.icon(
-                onPressed:
-                    loading ? null : showImageOptions,
-                icon: const Icon(
-                  Icons.add_photo_alternate_outlined,
-                ),
-                label: Text(
-                  selectedImage == null
-                      ? 'Add Photo'
-                      : 'Change Photo',
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 15),
-
-            // ==================================================
-            // PUBLISH
-            // ==================================================
-
-            SizedBox(
-              width: double.infinity,
-              height: 54,
-              child: FilledButton.icon(
-                onPressed: loading ? null : submitPost,
-                icon: loading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.send),
-                label: Text(
-                  loading
-                      ? 'Uploading...'
-                      : 'Publish Post',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                  label: Text(
+                    selectedImage == null
+                        ? 'Add Photo'
+                        : 'Change Photo',
                   ),
                 ),
               ),
-            ),
-          ],
+
+              const SizedBox(height: 15),
+
+              // ------------------------------------------------
+              // PUBLISH
+              // ------------------------------------------------
+
+              SizedBox(
+                width: double.infinity,
+                height: 54,
+                child: FilledButton.icon(
+                  onPressed:
+                      loading ? null : submitPost,
+                  icon: loading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child:
+                              CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.send),
+                  label: Text(
+                    loading
+                        ? 'Uploading...'
+                        : 'Publish Post',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1173,6 +1323,7 @@ class PostCard extends StatefulWidget {
 class _PostCardState extends State<PostCard> {
   int likeCount = 0;
   int commentCount = 0;
+
   bool liked = false;
   bool loadingLike = false;
 
@@ -1182,44 +1333,75 @@ class _PostCardState extends State<PostCard> {
     loadInteractionData();
   }
 
-  String get postId => widget.post['id'].toString();
+  String get postId {
+    return widget.post['id'].toString();
+  }
 
-  String get userId => widget.post['user_id'].toString();
+  String get userId {
+    return widget.post['user_id'].toString();
+  }
+
+  // ==========================================================
+  // LOAD LIKES / COMMENTS
+  // ==========================================================
 
   Future<void> loadInteractionData() async {
     try {
-      final likes = await supabase
+      final likesData = await supabase
           .from('likes')
           .select('id, user_id')
           .eq('post_id', postId);
 
-      final comments = await supabase
+      final commentsData = await supabase
           .from('comments')
           .select('id')
           .eq('post_id', postId);
 
-      final currentUser = supabase.auth.currentUser;
+      final List<Map<String, dynamic>> likes =
+          List<Map<String, dynamic>>.from(
+        likesData,
+      );
+
+      final List<Map<String, dynamic>> comments =
+          List<Map<String, dynamic>>.from(
+        commentsData,
+      );
+
+      final currentUser =
+          supabase.auth.currentUser;
 
       if (!mounted) return;
 
       setState(() {
-        likeCount = (likes as List).length;
-        commentCount = (comments as List).length;
+        likeCount = likes.length;
+        commentCount = comments.length;
 
         liked = currentUser != null &&
             likes.any(
-              (like) => like['user_id'] == currentUser.id,
+              (like) =>
+                  like['user_id'] == currentUser.id,
             );
       });
-    } catch (_) {}
+    } catch (_) {
+      // Ignore interaction loading errors.
+    }
   }
 
+  // ==========================================================
+  // LIKE
+  // ==========================================================
+
   Future<void> toggleLike() async {
-    final currentUser = supabase.auth.currentUser;
+    final currentUser =
+        supabase.auth.currentUser;
 
-    if (currentUser == null || loadingLike) return;
+    if (currentUser == null || loadingLike) {
+      return;
+    }
 
-    setState(() => loadingLike = true);
+    setState(() {
+      loadingLike = true;
+    });
 
     try {
       if (liked) {
@@ -1233,8 +1415,10 @@ class _PostCardState extends State<PostCard> {
 
         setState(() {
           liked = false;
-          likeCount =
-              likeCount > 0 ? likeCount - 1 : 0;
+
+          if (likeCount > 0) {
+            likeCount--;
+          }
         });
       } else {
         await supabase.from('likes').insert({
@@ -1254,15 +1438,23 @@ class _PostCardState extends State<PostCard> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Like failed: $e'),
+          content: Text(
+            'Like failed: $e',
+          ),
         ),
       );
     } finally {
       if (mounted) {
-        setState(() => loadingLike = false);
+        setState(() {
+          loadingLike = false;
+        });
       }
     }
   }
+
+  // ==========================================================
+  // COMMENTS
+  // ==========================================================
 
   Future<void> openComments() async {
     final result = await Navigator.push(
@@ -1274,38 +1466,61 @@ class _PostCardState extends State<PostCard> {
       ),
     );
 
-    if (result == true) {
+    if (result == true && mounted) {
       await loadInteractionData();
     }
   }
 
-  Future<void> deletePost() async {
-    final currentUser = supabase.auth.currentUser;
+  // ==========================================================
+  // DELETE POST
+  // ==========================================================
 
-    if (currentUser == null || currentUser.id != userId) {
+  Future<void> deletePost() async {
+    final currentUser =
+        supabase.auth.currentUser;
+
+    if (currentUser == null ||
+        currentUser.id != userId) {
       return;
     }
 
-    final confirm = await showDialog<bool>(
+    final confirm =
+        await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Delete Post?'),
-        content: const Text(
-          'This post will be permanently deleted.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () =>
-                Navigator.pop(context, false),
-            child: const Text('Cancel'),
+      builder: (_) {
+        return AlertDialog(
+          title: const Text(
+            'Delete Post?',
           ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.pop(context, true),
-            child: const Text('Delete'),
+          content: const Text(
+            'This post will be permanently deleted.',
           ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(
+                  context,
+                  false,
+                );
+              },
+              child: const Text(
+                'Cancel',
+              ),
+            ),
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(
+                  context,
+                  true,
+                );
+              },
+              child: const Text(
+                'Delete',
+              ),
+            ),
+          ],
+        );
+      },
     );
 
     if (confirm != true) return;
@@ -1316,27 +1531,45 @@ class _PostCardState extends State<PostCard> {
           .delete()
           .eq('id', postId);
 
+      if (!mounted) return;
+
       await widget.onDeleted();
     } catch (e) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Delete failed: $e'),
+          content: Text(
+            'Delete failed: $e',
+          ),
         ),
       );
     }
   }
 
+  // ==========================================================
+  // POST UI
+  // ==========================================================
+
   @override
   Widget build(BuildContext context) {
-    final profile = widget.post['profiles'];
+    final dynamic profileData =
+        widget.post['profiles'];
+
+    final Map<String, dynamic>? profile =
+        profileData is Map
+            ? Map<String, dynamic>.from(
+                profileData,
+              )
+            : null;
 
     final username =
-        profile?['username']?.toString() ?? 'User';
+        profile?['username']?.toString() ??
+            'User';
 
     final fullName =
-        profile?['full_name']?.toString() ?? username;
+        profile?['full_name']?.toString() ??
+            username;
 
     final avatarUrl =
         profile?['avatar_url']?.toString();
@@ -1347,7 +1580,8 @@ class _PostCardState extends State<PostCard> {
     final imageUrl =
         widget.post['image_url']?.toString();
 
-    final currentUser = supabase.auth.currentUser;
+    final currentUser =
+        supabase.auth.currentUser;
 
     return Card(
       margin: const EdgeInsets.symmetric(
@@ -1365,9 +1599,9 @@ class _PostCardState extends State<PostCard> {
           crossAxisAlignment:
               CrossAxisAlignment.start,
           children: [
-            // ==================================================
+            // --------------------------------------------------
             // USER HEADER
-            // ==================================================
+            // --------------------------------------------------
 
             Row(
               children: [
@@ -1376,7 +1610,9 @@ class _PostCardState extends State<PostCard> {
                   backgroundImage:
                       avatarUrl != null &&
                               avatarUrl.isNotEmpty
-                          ? NetworkImage(avatarUrl)
+                          ? NetworkImage(
+                              avatarUrl,
+                            )
                           : null,
                   child:
                       avatarUrl == null ||
@@ -1386,14 +1622,17 @@ class _PostCardState extends State<PostCard> {
                                   ? username[0]
                                       .toUpperCase()
                                   : 'U',
-                              style: const TextStyle(
+                              style:
+                                  const TextStyle(
                                 fontWeight:
                                     FontWeight.bold,
                               ),
                             )
                           : null,
                 ),
+
                 const SizedBox(width: 12),
+
                 Expanded(
                   child: Column(
                     crossAxisAlignment:
@@ -1401,7 +1640,8 @@ class _PostCardState extends State<PostCard> {
                     children: [
                       Text(
                         fullName,
-                        style: const TextStyle(
+                        style:
+                            const TextStyle(
                           fontWeight:
                               FontWeight.bold,
                           fontSize: 16,
@@ -1409,7 +1649,8 @@ class _PostCardState extends State<PostCard> {
                       ),
                       Text(
                         '@$username',
-                        style: const TextStyle(
+                        style:
+                            const TextStyle(
                           color: Colors.grey,
                           fontSize: 13,
                         ),
@@ -1417,6 +1658,7 @@ class _PostCardState extends State<PostCard> {
                     ],
                   ),
                 ),
+
                 if (currentUser?.id == userId)
                   PopupMenuButton<String>(
                     onSelected: (value) {
@@ -1424,19 +1666,23 @@ class _PostCardState extends State<PostCard> {
                         deletePost();
                       }
                     },
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(
-                        value: 'delete',
-                        child: Text('Delete'),
-                      ),
-                    ],
+                    itemBuilder: (_) {
+                      return const [
+                        PopupMenuItem<String>(
+                          value: 'delete',
+                          child: Text(
+                            'Delete',
+                          ),
+                        ),
+                      ];
+                    },
                   ),
               ],
             ),
 
-            // ==================================================
-            // POST TEXT
-            // ==================================================
+            // --------------------------------------------------
+            // TEXT
+            // --------------------------------------------------
 
             if (content.isNotEmpty) ...[
               const SizedBox(height: 15),
@@ -1449,9 +1695,9 @@ class _PostCardState extends State<PostCard> {
               ),
             ],
 
-            // ==================================================
-            // POST IMAGE
-            // ==================================================
+            // --------------------------------------------------
+            // IMAGE
+            // --------------------------------------------------
 
             if (imageUrl != null &&
                 imageUrl.isNotEmpty) ...[
@@ -1464,14 +1710,19 @@ class _PostCardState extends State<PostCard> {
                   width: double.infinity,
                   fit: BoxFit.cover,
                   loadingBuilder:
-                      (context, child, progress) {
+                      (
+                    context,
+                    child,
+                    progress,
+                  ) {
                     if (progress == null) {
                       return child;
                     }
 
                     return Container(
                       height: 220,
-                      color: Colors.grey.shade100,
+                      color:
+                          Colors.grey.shade100,
                       child: const Center(
                         child:
                             CircularProgressIndicator(),
@@ -1479,13 +1730,15 @@ class _PostCardState extends State<PostCard> {
                     );
                   },
                   errorBuilder:
-                      (_, __, ___) {
+                      (context, error, stackTrace) {
                     return Container(
                       height: 150,
-                      color: Colors.grey.shade200,
+                      color:
+                          Colors.grey.shade200,
                       child: const Center(
                         child: Icon(
-                          Icons.broken_image_outlined,
+                          Icons
+                              .broken_image_outlined,
                           size: 50,
                         ),
                       ),
@@ -1497,9 +1750,9 @@ class _PostCardState extends State<PostCard> {
 
             const SizedBox(height: 15),
 
-            // ==================================================
+            // --------------------------------------------------
             // ACTIONS
-            // ==================================================
+            // --------------------------------------------------
 
             Row(
               children: [
@@ -1524,12 +1777,16 @@ class _PostCardState extends State<PostCard> {
                               : Colors.grey,
                         ),
                         const SizedBox(width: 5),
-                        Text('$likeCount'),
+                        Text(
+                          '$likeCount',
+                        ),
                       ],
                     ),
                   ),
                 ),
+
                 const SizedBox(width: 10),
+
                 InkWell(
                   onTap: openComments,
                   borderRadius:
@@ -1543,16 +1800,21 @@ class _PostCardState extends State<PostCard> {
                     child: Row(
                       children: [
                         const Icon(
-                          Icons.chat_bubble_outline,
+                          Icons
+                              .chat_bubble_outline,
                           color: Colors.grey,
                         ),
                         const SizedBox(width: 5),
-                        Text('$commentCount'),
+                        Text(
+                          '$commentCount',
+                        ),
                       ],
                     ),
                   ),
                 ),
+
                 const Spacer(),
+
                 const Icon(
                   Icons.share_outlined,
                   color: Colors.grey,
@@ -1585,7 +1847,7 @@ class CommentsScreen extends StatefulWidget {
 
 class _CommentsScreenState
     extends State<CommentsScreen> {
-  final commentController =
+  final TextEditingController commentController =
       TextEditingController();
 
   bool loading = true;
@@ -1605,41 +1867,52 @@ class _CommentsScreenState
     super.dispose();
   }
 
+  // ==========================================================
+  // LOAD COMMENTS
+  // ==========================================================
+
   Future<void> loadComments() async {
     try {
-      final result = await supabase
+      final data = await supabase
           .from('comments')
           .select(
             'id, user_id, content, created_at, '
             'profiles(username, full_name, avatar_url)',
           )
-          .eq('post_id', widget.postId)
+          .eq(
+            'post_id',
+            widget.postId,
+          )
           .order(
             'created_at',
             ascending: true,
           );
 
+      final result =
+          List<Map<String, dynamic>>.from(data);
+
       if (!mounted) return;
 
       setState(() {
-        comments =
-            List<Map<String, dynamic>>.from(result);
+        comments = result;
         loading = false;
       });
     } catch (e) {
       if (!mounted) return;
 
-      setState(() => loading = false);
+      setState(() {
+        loading = false;
+      });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Could not load comments: $e',
-          ),
-        ),
+      showMessage(
+        'Could not load comments: $e',
       );
     }
   }
+
+  // ==========================================================
+  // SEND COMMENT
+  // ==========================================================
 
   Future<void> sendComment() async {
     final content =
@@ -1654,7 +1927,9 @@ class _CommentsScreenState
       return;
     }
 
-    setState(() => sending = true);
+    setState(() {
+      sending = true;
+    });
 
     try {
       await supabase.from('comments').insert({
@@ -1669,40 +1944,55 @@ class _CommentsScreenState
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Comment failed: $e',
-          ),
-        ),
+      showMessage(
+        'Comment failed: $e',
       );
     } finally {
       if (mounted) {
-        setState(() => sending = false);
+        setState(() {
+          sending = false;
+        });
       }
     }
   }
 
-  Future<void> deleteComment(String id) async {
+  // ==========================================================
+  // DELETE COMMENT
+  // ==========================================================
+
+  Future<void> deleteComment(
+    String commentId,
+  ) async {
     try {
       await supabase
           .from('comments')
           .delete()
-          .eq('id', id);
+          .eq(
+            'id',
+            commentId,
+          );
 
       await loadComments();
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Could not delete comment: $e',
-          ),
-        ),
+      showMessage(
+        'Could not delete comment: $e',
       );
     }
   }
+
+  void showMessage(String message) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
+  }
+
+  // ==========================================================
+  // UI
+  // ==========================================================
 
   @override
   Widget build(BuildContext context) {
@@ -1711,8 +2001,11 @@ class _CommentsScreenState
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Comments'),
+        title: const Text(
+          'Comments',
+        ),
       ),
+
       body: Column(
         children: [
           Expanded(
@@ -1740,12 +2033,21 @@ class _CommentsScreenState
                         itemCount:
                             comments.length,
                         itemBuilder:
-                            (_, index) {
+                            (context, index) {
                           final comment =
                               comments[index];
 
-                          final profile =
+                          final dynamic profileData =
                               comment['profiles'];
+
+                          final Map<String, dynamic>?
+                              profile =
+                              profileData is Map
+                                  ? Map<String,
+                                      dynamic>.from(
+                                      profileData,
+                                    )
+                                  : null;
 
                           final username =
                               profile?['username']
@@ -1770,6 +2072,10 @@ class _CommentsScreenState
                               comment['id']
                                   .toString();
 
+                          final commentUserId =
+                              comment['user_id']
+                                  ?.toString();
+
                           return Card(
                             elevation: 0,
                             color: Colors.white,
@@ -1785,19 +2091,21 @@ class _CommentsScreenState
                                             avatarUrl,
                                           )
                                         : null,
-                                child: avatarUrl ==
-                                            null ||
-                                        avatarUrl
-                                            .isEmpty
-                                    ? Text(
-                                        username
-                                                .isNotEmpty
-                                            ? username[0]
-                                                .toUpperCase()
-                                            : 'U',
-                                      )
-                                    : null,
+                                child:
+                                    avatarUrl ==
+                                                null ||
+                                            avatarUrl
+                                                .isEmpty
+                                        ? Text(
+                                            username
+                                                    .isNotEmpty
+                                                ? username[0]
+                                                    .toUpperCase()
+                                                : 'U',
+                                          )
+                                        : null,
                               ),
+
                               title: Text(
                                 fullName,
                                 style:
@@ -1806,21 +2114,24 @@ class _CommentsScreenState
                                       FontWeight.bold,
                                 ),
                               ),
+
                               subtitle:
                                   Text(content),
+
                               trailing:
                                   currentUser?.id ==
-                                          comment[
-                                              'user_id']
+                                          commentUserId
                                       ? IconButton(
                                           icon:
                                               const Icon(
                                             Icons
                                                 .delete_outline,
                                           ),
-                                          onPressed: () =>
-                                              deleteComment(
-                                                  id),
+                                          onPressed: () {
+                                            deleteComment(
+                                              id,
+                                            );
+                                          },
                                         )
                                       : null,
                             ),
@@ -1829,9 +2140,9 @@ class _CommentsScreenState
                       ),
           ),
 
-          // ==================================================
+          // ----------------------------------------------------
           // COMMENT INPUT
-          // ==================================================
+          // ----------------------------------------------------
 
           SafeArea(
             child: Container(
@@ -1851,8 +2162,9 @@ class _CommentsScreenState
                           commentController,
                       textInputAction:
                           TextInputAction.send,
-                      onSubmitted: (_) =>
-                          sendComment(),
+                      onSubmitted: (_) {
+                        sendComment();
+                      },
                       decoration:
                           InputDecoration(
                         hintText:
@@ -1860,26 +2172,29 @@ class _CommentsScreenState
                         filled: true,
                         fillColor:
                             const Color(
-                                0xfff1f3f6),
+                          0xFFF1F3F6,
+                        ),
                         border:
                             OutlineInputBorder(
                           borderRadius:
                               BorderRadius.circular(
-                                  25),
+                            25,
+                          ),
                           borderSide:
                               BorderSide.none,
                         ),
                       ),
                     ),
                   ),
+
                   const SizedBox(width: 8),
+
                   CircleAvatar(
                     radius: 24,
                     child: IconButton(
-                      onPressed:
-                          sending
-                              ? null
-                              : sendComment,
+                      onPressed: sending
+                          ? null
+                          : sendComment,
                       icon: sending
                           ? const SizedBox(
                               width: 18,
