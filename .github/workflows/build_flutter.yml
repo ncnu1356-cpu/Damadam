@@ -1,32 +1,31 @@
 name: Build Damadam Flutter App
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: "3.35.0"
+          channel: stable
 
-      - name: Check Flutter
-        run: flutter --version
-
-      - name: Check Project
+      - name: Create Flutter project if missing
         run: |
           if [ ! -f pubspec.yaml ]; then
-            echo "pubspec.yaml not found"
-            exit 1
+            flutter create . --project-name damadam --org com.damadam
           fi
 
       - name: Get Dependencies
@@ -35,8 +34,16 @@ jobs:
       - name: Build APK
         run: flutter build apk --release
 
+      - name: Commit Flutter project
+        run: |
+          git config user.name "Damadam Bot"
+          git config user.email "actions@github.com"
+          git add .
+          git diff --cached --quiet || git commit -m "Create Damadam Flutter project"
+          git push
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: damadam-apk
+          name: damadam-release-apk
           path: build/app/outputs/flutter-apk/app-release.apk
