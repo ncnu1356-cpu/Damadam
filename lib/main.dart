@@ -26,22 +26,16 @@ class DamadamApp extends StatelessWidget {
         useMaterial3: true,
         colorSchemeSeed: Colors.blue,
         brightness: Brightness.light,
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(14),
-            borderSide: BorderSide.none,
-          ),
-        ),
+        scaffoldBackgroundColor: const Color(0xfff5f7fb),
       ),
       home: const AuthGate(),
     );
   }
 }
 
-// ------------------------------------------------------------
+// ============================================================
 // AUTH GATE
-// ------------------------------------------------------------
+// ============================================================
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
@@ -58,9 +52,9 @@ class AuthGate extends StatelessWidget {
   }
 }
 
-// ------------------------------------------------------------
+// ============================================================
 // WELCOME
-// ------------------------------------------------------------
+// ============================================================
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
@@ -79,9 +73,7 @@ class WelcomeScreen extends StatelessWidget {
                 size: 90,
                 color: Colors.blue,
               ),
-
               const SizedBox(height: 25),
-
               const Text(
                 'Damadam',
                 style: TextStyle(
@@ -89,9 +81,7 @@ class WelcomeScreen extends StatelessWidget {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-
               const SizedBox(height: 10),
-
               const Text(
                 'Connect. Share. Chat.',
                 style: TextStyle(
@@ -99,9 +89,7 @@ class WelcomeScreen extends StatelessWidget {
                   color: Colors.grey,
                 ),
               ),
-
               const SizedBox(height: 50),
-
               SizedBox(
                 width: double.infinity,
                 height: 55,
@@ -120,9 +108,7 @@ class WelcomeScreen extends StatelessWidget {
                   ),
                 ),
               ),
-
               const SizedBox(height: 15),
-
               SizedBox(
                 width: double.infinity,
                 height: 55,
@@ -149,9 +135,9 @@ class WelcomeScreen extends StatelessWidget {
   }
 }
 
-// ------------------------------------------------------------
+// ============================================================
 // SIGN UP
-// ------------------------------------------------------------
+// ============================================================
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -217,7 +203,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     setState(() => loading = true);
 
     try {
-      // Check username
       final existing = await supabase
           .from('profiles')
           .select('id')
@@ -230,7 +215,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
         return;
       }
 
-      // Create Auth account
       final response = await supabase.auth.signUp(
         email: email,
         password: password,
@@ -242,7 +226,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
         throw Exception('Account could not be created.');
       }
 
-      // Create profile
       await supabase.from('profiles').insert({
         'id': user.id,
         'username': username,
@@ -291,9 +274,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Create Account'),
-      ),
+      appBar: AppBar(title: const Text('Create Account')),
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(22),
@@ -307,16 +288,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-
               const SizedBox(height: 8),
-
               const Text(
                 'Create your account and connect with people.',
                 style: TextStyle(color: Colors.grey),
               ),
-
               const SizedBox(height: 30),
-
               TextField(
                 controller: usernameController,
                 decoration: const InputDecoration(
@@ -324,9 +301,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   prefixIcon: Icon(Icons.alternate_email),
                 ),
               ),
-
               const SizedBox(height: 15),
-
               TextField(
                 controller: fullNameController,
                 decoration: const InputDecoration(
@@ -334,9 +309,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   prefixIcon: Icon(Icons.person_outline),
                 ),
               ),
-
               const SizedBox(height: 15),
-
               TextField(
                 controller: emailController,
                 keyboardType: TextInputType.emailAddress,
@@ -345,9 +318,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   prefixIcon: Icon(Icons.email_outlined),
                 ),
               ),
-
               const SizedBox(height: 15),
-
               TextField(
                 controller: passwordController,
                 obscureText: obscurePassword,
@@ -368,9 +339,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 15),
-
               TextField(
                 controller: confirmPasswordController,
                 obscureText: obscureConfirmPassword,
@@ -392,9 +361,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
                   ),
                 ),
               ),
-
               const SizedBox(height: 25),
-
               SizedBox(
                 width: double.infinity,
                 height: 55,
@@ -422,9 +389,9 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 }
 
-// ------------------------------------------------------------
+// ============================================================
 // LOGIN
-// ------------------------------------------------------------
+// ============================================================
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -486,24 +453,19 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Login'),
-      ),
+      appBar: AppBar(title: const Text('Login')),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(22),
           child: Column(
             children: [
               const SizedBox(height: 30),
-
               const Icon(
                 Icons.lock_open_rounded,
                 size: 70,
                 color: Colors.blue,
               ),
-
               const SizedBox(height: 20),
-
               const Text(
                 'Welcome Back',
                 style: TextStyle(
@@ -511,9 +473,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   fontWeight: FontWeight.bold,
                 ),
               ),
-
               const SizedBox(height: 30),
-
               TextField(
                 controller: emailController,
                 keyboardType: TextInputType.emailAddress,
@@ -522,9 +482,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   prefixIcon: Icon(Icons.email_outlined),
                 ),
               ),
-
               const SizedBox(height: 15),
-
               TextField(
                 controller: passwordController,
                 obscureText: obscurePassword,
@@ -545,7 +503,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   ),
                 ),
               ),
-
               Align(
                 alignment: Alignment.centerRight,
                 child: TextButton(
@@ -553,16 +510,15 @@ class _LoginScreenState extends State<LoginScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => const ForgotPasswordScreen(),
+                        builder: (_) =>
+                            const ForgotPasswordScreen(),
                       ),
                     );
                   },
                   child: const Text('Forgot Password?'),
                 ),
               ),
-
               const SizedBox(height: 10),
-
               SizedBox(
                 width: double.infinity,
                 height: 55,
@@ -584,9 +540,9 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// ------------------------------------------------------------
+// ============================================================
 // FORGOT PASSWORD
-// ------------------------------------------------------------
+// ============================================================
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -640,15 +596,12 @@ class _ForgotPasswordScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Forgot Password'),
-      ),
+      appBar: AppBar(title: const Text('Forgot Password')),
       body: Padding(
         padding: const EdgeInsets.all(22),
         child: Column(
           children: [
             const SizedBox(height: 30),
-
             const Text(
               'Reset Password',
               style: TextStyle(
@@ -656,16 +609,12 @@ class _ForgotPasswordScreenState
                 fontWeight: FontWeight.bold,
               ),
             ),
-
             const SizedBox(height: 10),
-
             const Text(
               'Enter your email and we will send you a password reset link.',
               textAlign: TextAlign.center,
             ),
-
             const SizedBox(height: 30),
-
             TextField(
               controller: emailController,
               keyboardType: TextInputType.emailAddress,
@@ -674,9 +623,7 @@ class _ForgotPasswordScreenState
                 prefixIcon: Icon(Icons.email_outlined),
               ),
             ),
-
             const SizedBox(height: 20),
-
             SizedBox(
               width: double.infinity,
               height: 55,
@@ -694,17 +641,60 @@ class _ForgotPasswordScreenState
   }
 }
 
-// ------------------------------------------------------------
-// HOME
-// ------------------------------------------------------------
+// ============================================================
+// HOME FEED
+// ============================================================
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
-  Future<void> logout(BuildContext context) async {
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  bool loading = true;
+  List<Map<String, dynamic>> posts = [];
+
+  @override
+  void initState() {
+    super.initState();
+    loadPosts();
+  }
+
+  Future<void> loadPosts() async {
+    try {
+      final result = await supabase
+          .from('posts')
+          .select(
+            'id, user_id, content, image_url, created_at, '
+            'profiles(username, full_name, avatar_url)',
+          )
+          .order('created_at', ascending: false);
+
+      if (!mounted) return;
+
+      setState(() {
+        posts = List<Map<String, dynamic>>.from(result);
+        loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() => loading = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not load posts: $e'),
+        ),
+      );
+    }
+  }
+
+  Future<void> logout() async {
     await supabase.auth.signOut();
 
-    if (!context.mounted) return;
+    if (!mounted) return;
 
     Navigator.pushAndRemoveUntil(
       context,
@@ -715,62 +705,883 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+  Future<void> createPost() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const CreatePostScreen(),
+      ),
+    );
+
+    if (result == true) {
+      await loadPosts();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final user = supabase.auth.currentUser;
-
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
         title: const Text(
           'Damadam',
           style: TextStyle(
             fontWeight: FontWeight.bold,
+            fontSize: 25,
           ),
         ),
         actions: [
           IconButton(
-            onPressed: () => logout(context),
+            onPressed: createPost,
+            icon: const Icon(Icons.add_circle_outline),
+          ),
+          IconButton(
+            onPressed: logout,
             icon: const Icon(Icons.logout),
           ),
         ],
       ),
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.home_rounded,
-              size: 80,
-              color: Colors.blue,
-            ),
+      body: RefreshIndicator(
+        onRefresh: loadPosts,
+        child: loading
+            ? const Center(
+                child: CircularProgressIndicator(),
+              )
+            : posts.isEmpty
+                ? ListView(
+                    children: const [
+                      SizedBox(height: 180),
+                      Icon(
+                        Icons.dynamic_feed_outlined,
+                        size: 70,
+                        color: Colors.grey,
+                      ),
+                      SizedBox(height: 15),
+                      Center(
+                        child: Text(
+                          'No posts yet',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Center(
+                        child: Text(
+                          'Be the first person to create a post.',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ),
+                    ],
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 10,
+                    ),
+                    itemCount: posts.length,
+                    itemBuilder: (context, index) {
+                      return PostCard(
+                        post: posts[index],
+                        onDeleted: loadPosts,
+                      );
+                    },
+                  ),
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: createPost,
+        child: const Icon(Icons.edit),
+      ),
+    );
+  }
+}
 
-            const SizedBox(height: 20),
+// ============================================================
+// CREATE POST
+// ============================================================
 
-            const Text(
-              'Welcome to Damadam! 🎉',
+class CreatePostScreen extends StatefulWidget {
+  const CreatePostScreen({super.key});
+
+  @override
+  State<CreatePostScreen> createState() =>
+      _CreatePostScreenState();
+}
+
+class _CreatePostScreenState extends State<CreatePostScreen> {
+  final contentController = TextEditingController();
+  final imageUrlController = TextEditingController();
+
+  bool loading = false;
+
+  @override
+  void dispose() {
+    contentController.dispose();
+    imageUrlController.dispose();
+    super.dispose();
+  }
+
+  Future<void> submitPost() async {
+    final content = contentController.text.trim();
+    final imageUrl = imageUrlController.text.trim();
+
+    if (content.isEmpty && imageUrl.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Write something or add an image URL.'),
+        ),
+      );
+      return;
+    }
+
+    final user = supabase.auth.currentUser;
+
+    if (user == null) {
+      return;
+    }
+
+    setState(() => loading = true);
+
+    try {
+      await supabase.from('posts').insert({
+        'user_id': user.id,
+        'content': content,
+        'image_url': imageUrl.isEmpty ? null : imageUrl,
+      });
+
+      if (!mounted) return;
+
+      Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Post failed: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => loading = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Create Post'),
+        actions: [
+          TextButton(
+            onPressed: loading ? null : submitPost,
+            child: const Text(
+              'POST',
               style: TextStyle(
-                fontSize: 25,
                 fontWeight: FontWeight.bold,
               ),
             ),
-
-            const SizedBox(height: 10),
-
-            Text(
-              user?.email ?? '',
-              style: const TextStyle(
-                color: Colors.grey,
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(18),
+        child: Column(
+          children: [
+            TextField(
+              controller: contentController,
+              maxLines: 8,
+              maxLength: 1000,
+              decoration: InputDecoration(
+                hintText: "What's on your mind?",
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  borderSide: BorderSide.none,
+                ),
               ),
             ),
-
-            const SizedBox(height: 30),
-
-            const Text(
-              'Home Feed Coming Next...',
-              style: TextStyle(fontSize: 16),
+            const SizedBox(height: 15),
+            TextField(
+              controller: imageUrlController,
+              decoration: InputDecoration(
+                hintText: 'Image URL (optional)',
+                prefixIcon: const Icon(Icons.image_outlined),
+                filled: true,
+                fillColor: Colors.white,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: FilledButton.icon(
+                onPressed: loading ? null : submitPost,
+                icon: const Icon(Icons.send),
+                label: loading
+                    ? const CircularProgressIndicator()
+                    : const Text('Publish Post'),
+              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// POST CARD
+// ============================================================
+
+class PostCard extends StatefulWidget {
+  final Map<String, dynamic> post;
+  final Future<void> Function() onDeleted;
+
+  const PostCard({
+    super.key,
+    required this.post,
+    required this.onDeleted,
+  });
+
+  @override
+  State<PostCard> createState() => _PostCardState();
+}
+
+class _PostCardState extends State<PostCard> {
+  int likeCount = 0;
+  int commentCount = 0;
+  bool liked = false;
+  bool loadingLike = false;
+
+  @override
+  void initState() {
+    super.initState();
+    loadInteractionData();
+  }
+
+  String get postId => widget.post['id'].toString();
+
+  String get userId => widget.post['user_id'].toString();
+
+  Future<void> loadInteractionData() async {
+    try {
+      final likes = await supabase
+          .from('likes')
+          .select('id, user_id')
+          .eq('post_id', postId);
+
+      final comments = await supabase
+          .from('comments')
+          .select('id')
+          .eq('post_id', postId);
+
+      final currentUser = supabase.auth.currentUser;
+
+      if (!mounted) return;
+
+      setState(() {
+        likeCount = (likes as List).length;
+        commentCount = (comments as List).length;
+
+        liked = currentUser != null &&
+            likes.any(
+              (like) => like['user_id'] == currentUser.id,
+            );
+      });
+    } catch (_) {}
+  }
+
+  Future<void> toggleLike() async {
+    final currentUser = supabase.auth.currentUser;
+
+    if (currentUser == null || loadingLike) return;
+
+    setState(() => loadingLike = true);
+
+    try {
+      if (liked) {
+        await supabase
+            .from('likes')
+            .delete()
+            .eq('post_id', postId)
+            .eq('user_id', currentUser.id);
+
+        if (!mounted) return;
+
+        setState(() {
+          liked = false;
+          likeCount = likeCount > 0 ? likeCount - 1 : 0;
+        });
+      } else {
+        await supabase.from('likes').insert({
+          'post_id': postId,
+          'user_id': currentUser.id,
+        });
+
+        if (!mounted) return;
+
+        setState(() {
+          liked = true;
+          likeCount++;
+        });
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Like failed: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => loadingLike = false);
+      }
+    }
+  }
+
+  Future<void> openComments() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CommentsScreen(
+          postId: postId,
+        ),
+      ),
+    );
+
+    if (result == true) {
+      await loadInteractionData();
+    }
+  }
+
+  Future<void> deletePost() async {
+    final currentUser = supabase.auth.currentUser;
+
+    if (currentUser == null || currentUser.id != userId) {
+      return;
+    }
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete Post?'),
+        content: const Text(
+          'This post will be permanently deleted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true) return;
+
+    try {
+      await supabase
+          .from('posts')
+          .delete()
+          .eq('id', postId);
+
+      await widget.onDeleted();
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Delete failed: $e'),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = widget.post['profiles'];
+
+    final username =
+        profile?['username']?.toString() ?? 'User';
+
+    final fullName =
+        profile?['full_name']?.toString() ?? username;
+
+    final avatarUrl =
+        profile?['avatar_url']?.toString();
+
+    final content =
+        widget.post['content']?.toString() ?? '';
+
+    final imageUrl =
+        widget.post['image_url']?.toString();
+
+    final currentUser = supabase.auth.currentUser;
+
+    return Card(
+      margin: const EdgeInsets.symmetric(
+        horizontal: 10,
+        vertical: 6,
+      ),
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(15),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 23,
+                  backgroundImage: avatarUrl != null &&
+                          avatarUrl.isNotEmpty
+                      ? NetworkImage(avatarUrl)
+                      : null,
+                  child: avatarUrl == null ||
+                          avatarUrl.isEmpty
+                      ? Text(
+                          username.isNotEmpty
+                              ? username[0].toUpperCase()
+                              : 'U',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        fullName,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        '@$username',
+                        style: const TextStyle(
+                          color: Colors.grey,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (currentUser?.id == userId)
+                  PopupMenuButton<String>(
+                    onSelected: (value) {
+                      if (value == 'delete') {
+                        deletePost();
+                      }
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: Text('Delete'),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
+
+            if (content.isNotEmpty) ...[
+              const SizedBox(height: 15),
+              Text(
+                content,
+                style: const TextStyle(
+                  fontSize: 16,
+                  height: 1.4,
+                ),
+              ),
+            ],
+
+            if (imageUrl != null && imageUrl.isNotEmpty) ...[
+              const SizedBox(height: 15),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(15),
+                child: Image.network(
+                  imageUrl,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) {
+                    return Container(
+                      height: 150,
+                      color: Colors.grey.shade200,
+                      child: const Center(
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          size: 50,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+
+            const SizedBox(height: 15),
+
+            Row(
+              children: [
+                InkWell(
+                  onTap: toggleLike,
+                  borderRadius: BorderRadius.circular(20),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          liked
+                              ? Icons.favorite
+                              : Icons.favorite_border,
+                          color:
+                              liked ? Colors.red : Colors.grey,
+                        ),
+                        const SizedBox(width: 5),
+                        Text('$likeCount'),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                InkWell(
+                  onTap: openComments,
+                  borderRadius: BorderRadius.circular(20),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 6,
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.chat_bubble_outline,
+                          color: Colors.grey,
+                        ),
+                        const SizedBox(width: 5),
+                        Text('$commentCount'),
+                      ],
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                const Icon(
+                  Icons.share_outlined,
+                  color: Colors.grey,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// COMMENTS
+// ============================================================
+
+class CommentsScreen extends StatefulWidget {
+  final String postId;
+
+  const CommentsScreen({
+    super.key,
+    required this.postId,
+  });
+
+  @override
+  State<CommentsScreen> createState() =>
+      _CommentsScreenState();
+}
+
+class _CommentsScreenState extends State<CommentsScreen> {
+  final commentController = TextEditingController();
+
+  bool loading = true;
+  bool sending = false;
+
+  List<Map<String, dynamic>> comments = [];
+
+  @override
+  void initState() {
+    super.initState();
+    loadComments();
+  }
+
+  @override
+  void dispose() {
+    commentController.dispose();
+    super.dispose();
+  }
+
+  Future<void> loadComments() async {
+    try {
+      final result = await supabase
+          .from('comments')
+          .select(
+            'id, user_id, content, created_at, '
+            'profiles(username, full_name, avatar_url)',
+          )
+          .eq('post_id', widget.postId)
+          .order('created_at', ascending: true);
+
+      if (!mounted) return;
+
+      setState(() {
+        comments = List<Map<String, dynamic>>.from(result);
+        loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() => loading = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not load comments: $e'),
+        ),
+      );
+    }
+  }
+
+  Future<void> sendComment() async {
+    final content = commentController.text.trim();
+    final user = supabase.auth.currentUser;
+
+    if (content.isEmpty || user == null || sending) {
+      return;
+    }
+
+    setState(() => sending = true);
+
+    try {
+      await supabase.from('comments').insert({
+        'post_id': widget.postId,
+        'user_id': user.id,
+        'content': content,
+      });
+
+      commentController.clear();
+
+      await loadComments();
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Comment failed: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => sending = false);
+      }
+    }
+  }
+
+  Future<void> deleteComment(String id) async {
+    try {
+      await supabase
+          .from('comments')
+          .delete()
+          .eq('id', id);
+
+      await loadComments();
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not delete comment: $e'),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final currentUser = supabase.auth.currentUser;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Comments'),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: loading
+                ? const Center(
+                    child: CircularProgressIndicator(),
+                  )
+                : comments.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'No comments yet.\nBe the first to comment!',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.grey,
+                            fontSize: 16,
+                          ),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: comments.length,
+                        itemBuilder: (_, index) {
+                          final comment = comments[index];
+                          final profile =
+                              comment['profiles'];
+
+                          final username =
+                              profile?['username']
+                                      ?.toString() ??
+                                  'User';
+
+                          final fullName =
+                              profile?['full_name']
+                                      ?.toString() ??
+                                  username;
+
+                          final avatarUrl =
+                              profile?['avatar_url']
+                                  ?.toString();
+
+                          final content =
+                              comment['content']
+                                  ?.toString() ??
+                                  '';
+
+                          final id =
+                              comment['id'].toString();
+
+                          return Card(
+                            elevation: 0,
+                            color: Colors.white,
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundImage:
+                                    avatarUrl != null &&
+                                            avatarUrl.isNotEmpty
+                                        ? NetworkImage(
+                                            avatarUrl,
+                                          )
+                                        : null,
+                                child: avatarUrl == null ||
+                                        avatarUrl.isEmpty
+                                    ? Text(
+                                        username.isNotEmpty
+                                            ? username[0]
+                                                .toUpperCase()
+                                            : 'U',
+                                      )
+                                    : null,
+                              ),
+                              title: Text(
+                                fullName,
+                                style: const TextStyle(
+                                  fontWeight:
+                                      FontWeight.bold,
+                                ),
+                              ),
+                              subtitle: Text(
+                                content,
+                              ),
+                              trailing:
+                                  currentUser?.id ==
+                                          comment['user_id']
+                                      ? IconButton(
+                                          icon: const Icon(
+                                            Icons.delete_outline,
+                                          ),
+                                          onPressed: () =>
+                                              deleteComment(id),
+                                        )
+                                      : null,
+                            ),
+                          );
+                        },
+                      ),
+          ),
+
+          SafeArea(
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(
+                12,
+                8,
+                12,
+                8,
+              ),
+              color: Colors.white,
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: commentController,
+                      textInputAction:
+                          TextInputAction.send,
+                      onSubmitted: (_) =>
+                          sendComment(),
+                      decoration: InputDecoration(
+                        hintText: 'Write a comment...',
+                        filled: true,
+                        fillColor:
+                            const Color(0xfff1f3f6),
+                        border: OutlineInputBorder(
+                          borderRadius:
+                              BorderRadius.circular(25),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  CircleAvatar(
+                    radius: 24,
+                    child: IconButton(
+                      onPressed:
+                          sending ? null : sendComment,
+                      icon: sending
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child:
+                                  CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Icon(Icons.send),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
