@@ -5,10 +5,8 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Supabase.initialize(
-    url: 'https://fhmshhmklsqgiyvcdvbr.supabase.co
-‎',
-    anonKey: 'sb_publishable_gTJUg-94UMGG7FF73Ey58g_ZLoeEZoW
-‎',
+    url: 'https://fhmshhmklsqgiyvcdvbr.supabase.co',
+    anonKey: 'sb_publishable_gTJUg-94UMGG7FF73Ey58g_ZLoeEZoW',
   );
 
   runApp(const DamadamApp());
