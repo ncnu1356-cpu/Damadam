@@ -1999,31 +1999,3 @@ class _CommentsScreenState
     );
   }
 }
-
-⚠️ Sirf ek cheez change karni hai
-
-Code ke top par:
-
-const String supabasePublishableKey =
-    'YOUR_SUPABASE_PUBLISHABLE_KEY';
-
-isko tumhare existing working publishable/anon key se replace karna hai.
-
-Apni key mujhe dobara bhejne ki zarurat nahi. Jo key tumhare current working "main.dart" mein hai, wohi yahan paste kar do.
-
-Ab test order
-
-1. "main.dart" replace karo.
-2. "YOUR_SUPABASE_PUBLISHABLE_KEY" ko apni existing key se replace karo.
-3. Save.
-4. "flutter pub get"
-5. Run/build APK.
-6. Login.
-7. Home par person/profile icon dabao.
-8. Profile open hona chahiye.
-9. Edit Profile dabao.
-10. Name/Bio change karke Save.
-11. Avatar aur Cover image select karke Save.
-12. Phir Home → Create Post → image upload test.
-
-Important: Agar build mein koi error aaye, screenshot ki zarurat nahi—bas red error ka exact text copy karke bhej dena. Main usi error ke according next fix dunga.
