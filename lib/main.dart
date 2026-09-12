@@ -14,7 +14,7 @@ const String supabaseUrl =
     'https://fhmshhmklsqgiyvcdvbr.supabase.co';
 
 const String supabasePublishableKey =
-    'YOUR_SUPABASE_PUBLISHABLE_KEY';
+    'sb_publishable_gTJUg-94UMGG7FF73Ey58g_ZLoeEZoW';
 
 final SupabaseClient supabase = Supabase.instance.client;
 
