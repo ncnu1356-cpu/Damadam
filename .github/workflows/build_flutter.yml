@@ -1,38 +1,42 @@
-name: Create Damadam Flutter App
+name: Build Damadam Flutter App
 
 on:
-  workflow_dispatch:
-    push:
-        branches:
-              - main
+  push:
+      branches:
+            - main
+              workflow_dispatch:
 
-              permissions:
-                contents: write
+              jobs:
+                build:
+                    runs-on: ubuntu-latest
 
-                jobs:
-                  setup:
-                      runs-on: ubuntu-latest
+                        steps:
+                              - name: Checkout
+                                      uses: actions/checkout@v4
 
-                          steps:
-                                - name: Checkout repository
-                                        uses: actions/checkout@v4
+                                            - name: Setup Flutter
+                                                    uses: subosito/flutter-action@v2
+                                                            with:
+                                                                      flutter-version: "3.35.0"
 
-                                              - name: Setup Flutter
-                                                      uses: subosito/flutter-action@v2
-                                                              with:
-                                                                        channel: stable
+                                                                            - name: Check Flutter
+                                                                                    run: flutter --version
 
-                                                                              - name: Create Flutter project
-                                                                                      run: |
-                                                                                                if [ ! -f pubspec.yaml ]; then
-                                                                                                            flutter create . --project-name damadam --org com.damadam
-                                                                                                                      fi
+                                                                                          - name: Check Project
+                                                                                                  run: |
+                                                                                                            if [ ! -f pubspec.yaml ]; then
+                                                                                                                        echo "pubspec.yaml not found"
+                                                                                                                                    exit 1
+                                                                                                                                              fi
 
-                                                                                                                            - name: Commit Flutter project
-                                                                                                                                    run: |
-                                                                                                                                              git config user.name "Damadam Bot"
-                                                                                                                                                        git config user.email "actions@github.com"
-                                                                                                                                                                  git add .
-                                                                                                                                                                            git diff --cached --quiet || git commit -m "Initialize Damadam Flutter app"
-                                                                                                                                                                                      git pushInitialize Damadam Flutter App
-                                                                                                                                                                                      
+                                                                                                                                                    - name: Get Dependencies
+                                                                                                                                                            run: flutter pub get
+
+                                                                                                                                                                  - name: Build APK
+                                                                                                                                                                          run: flutter build apk --release
+
+                                                                                                                                                                                - name: Upload APK
+                                                                                                                                                                                        uses: actions/upload-artifact@v4
+                                                                                                                                                                                                with:
+                                                                                                                                                                                                          name: damadam-apk
+                                                                                                                                                                                                                    path: build/app/outputs/flutter-apk/app-release.apk
