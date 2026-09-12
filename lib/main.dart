@@ -3,23 +3,41 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
 import 'screens/profile/profile_screen.dart';
+
+/// ============================================================
+/// SUPABASE
+/// ============================================================
+
+const String supabaseUrl =
+    'https://fhmshhmklsqgiyvcdvbr.supabase.co';
+
+const String supabasePublishableKey =
+    'YOUR_SUPABASE_PUBLISHABLE_KEY';
+
+final SupabaseClient supabase = Supabase.instance.client;
+
+
+/// ============================================================
+/// MAIN
+/// ============================================================
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   await Supabase.initialize(
-    url: 'https://fhmshhmklsqgiyvcdvbr.supabase.co',
-    anonKey: 'sb_publishable_gTJUg-94UMGG7FF73Ey58g_ZLoeEZoW',
+    url: supabaseUrl,
+    anonKey: supabasePublishableKey,
   );
 
   runApp(const DamadamApp());
 }
 
-final SupabaseClient supabase = Supabase.instance.client;
 
-// ============================================================
-// APP
-// ============================================================
+/// ============================================================
+/// APP
+/// ============================================================
 
 class DamadamApp extends StatelessWidget {
   const DamadamApp({super.key});
@@ -33,35 +51,41 @@ class DamadamApp extends StatelessWidget {
         useMaterial3: true,
         colorSchemeSeed: Colors.blue,
         brightness: Brightness.light,
-        scaffoldBackgroundColor: const Color(0xFFF5F7FB),
       ),
       home: const AuthGate(),
     );
   }
 }
 
-// ============================================================
-// AUTH GATE
-// ============================================================
+
+/// ============================================================
+/// AUTH GATE
+/// ============================================================
 
 class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final session = supabase.auth.currentSession;
+    return StreamBuilder<AuthState>(
+      stream: supabase.auth.onAuthStateChange,
+      builder: (context, snapshot) {
+        final session = supabase.auth.currentSession;
 
-    if (session != null) {
-      return const HomeScreen();
-    }
+        if (session != null) {
+          return const HomeScreen();
+        }
 
-    return const WelcomeScreen();
+        return const WelcomeScreen();
+      },
+    );
   }
 }
 
-// ============================================================
-// WELCOME
-// ============================================================
+
+/// ============================================================
+/// WELCOME SCREEN
+/// ============================================================
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
@@ -70,71 +94,93 @@ class WelcomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.people_alt_rounded,
-                size: 90,
-                color: Colors.blue,
-              ),
-              const SizedBox(height: 25),
-              const Text(
-                'Damadam',
-                style: TextStyle(
-                  fontSize: 38,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'Connect. Share. Chat.',
-                style: TextStyle(
-                  fontSize: 17,
-                  color: Colors.grey,
-                ),
-              ),
-              const SizedBox(height: 50),
-              SizedBox(
-                width: double.infinity,
-                height: 55,
-                child: FilledButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const SignUpScreen(),
-                      ),
-                    );
-                  },
-                  child: const Text(
-                    'Create Account',
-                    style: TextStyle(fontSize: 17),
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 100,
+                  height: 100,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primaryContainer,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.people_alt_rounded,
+                    size: 55,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .primary,
                   ),
                 ),
-              ),
-              const SizedBox(height: 15),
-              SizedBox(
-                width: double.infinity,
-                height: 55,
-                child: OutlinedButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const LoginScreen(),
-                      ),
-                    );
-                  },
-                  child: const Text(
-                    'Login',
-                    style: TextStyle(fontSize: 17),
+
+                const SizedBox(height: 25),
+
+                const Text(
+                  'Damadam',
+                  style: TextStyle(
+                    fontSize: 34,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-              ),
-            ],
+
+                const SizedBox(height: 8),
+
+                Text(
+                  'Connect. Share. Chat.',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+
+                const SizedBox(height: 45),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: FilledButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const LoginScreen(),
+                        ),
+                      );
+                    },
+                    child: const Text(
+                      'Login',
+                      style: TextStyle(fontSize: 17),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 14),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 52,
+                  child: OutlinedButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const SignUpScreen(),
+                        ),
+                      );
+                    },
+                    child: const Text(
+                      'Create Account',
+                      style: TextStyle(fontSize: 17),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -142,9 +188,10 @@ class WelcomeScreen extends StatelessWidget {
   }
 }
 
-// ============================================================
-// SIGN UP
-// ============================================================
+
+/// ============================================================
+/// SIGN UP
+/// ============================================================
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -154,56 +201,48 @@ class SignUpScreen extends StatefulWidget {
 }
 
 class _SignUpScreenState extends State<SignUpScreen> {
-  final usernameController = TextEditingController();
-  final fullNameController = TextEditingController();
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
-  final confirmPasswordController = TextEditingController();
+  final usernameController = TextEditingController();
+  final fullNameController = TextEditingController();
 
   bool loading = false;
   bool obscurePassword = true;
-  bool obscureConfirmPassword = true;
 
   @override
   void dispose() {
-    usernameController.dispose();
-    fullNameController.dispose();
     emailController.dispose();
     passwordController.dispose();
-    confirmPasswordController.dispose();
+    usernameController.dispose();
+    fullNameController.dispose();
     super.dispose();
   }
 
   Future<void> signUp() async {
-    final username = usernameController.text.trim().toLowerCase();
-    final fullName = fullNameController.text.trim();
     final email = emailController.text.trim();
     final password = passwordController.text;
-    final confirmPassword = confirmPasswordController.text;
+    final username = usernameController.text.trim().toLowerCase();
+    final fullName = fullNameController.text.trim();
 
-    if (username.isEmpty ||
-        fullName.isEmpty ||
-        email.isEmpty ||
+    if (email.isEmpty ||
         password.isEmpty ||
-        confirmPassword.isEmpty) {
+        username.isEmpty ||
+        fullName.isEmpty) {
       showMessage('Please fill all fields.');
       return;
     }
 
-    if (!RegExp(r'^[a-z0-9_]{3,20}$').hasMatch(username)) {
+    final usernameRegex = RegExp(r'^[a-z0-9_]{3,20}$');
+
+    if (!usernameRegex.hasMatch(username)) {
       showMessage(
-        'Username must be 3-20 characters and use only letters, numbers or _.',
+        'Username must be 3-20 characters and use only a-z, 0-9 or _.',
       );
       return;
     }
 
     if (password.length < 6) {
-      showMessage('Password must contain at least 6 characters.');
-      return;
-    }
-
-    if (password != confirmPassword) {
-      showMessage('Passwords do not match.');
+      showMessage('Password must be at least 6 characters.');
       return;
     }
 
@@ -212,13 +251,14 @@ class _SignUpScreenState extends State<SignUpScreen> {
     });
 
     try {
-      final existing = await supabase
+      /// First check username
+      final existingUsername = await supabase
           .from('profiles')
           .select('id')
           .eq('username', username)
           .maybeSingle();
 
-      if (existing != null) {
+      if (existingUsername != null) {
         showMessage('Username already exists.');
         return;
       }
@@ -231,43 +271,31 @@ class _SignUpScreenState extends State<SignUpScreen> {
       final user = response.user;
 
       if (user == null) {
-        throw Exception('Account could not be created.');
+        showMessage('Account could not be created.');
+        return;
       }
 
+      /// Create profile
       await supabase.from('profiles').insert({
         'id': user.id,
         'username': username,
         'full_name': fullName,
+        'bio': '',
+        'avatar_url': null,
+        'cover_url': null,
       });
 
       if (!mounted) return;
 
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) {
-          return AlertDialog(
-            title: const Text('Account Created'),
-            content: const Text(
-              'Your account has been created successfully. '
-              'Please verify your email if email verification is enabled.',
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                },
-                child: const Text('Continue'),
-              ),
-            ],
-          );
-        },
+      showMessage(
+        'Account created successfully.',
+        success: true,
       );
-
-      if (!mounted) return;
 
       Navigator.pop(context);
     } on AuthException catch (e) {
+      showMessage(e.message);
+    } on PostgrestException catch (e) {
       showMessage(e.message);
     } catch (e) {
       showMessage('Something went wrong: $e');
@@ -280,11 +308,18 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
   }
 
-  void showMessage(String message) {
+  void showMessage(
+    String message, {
+    bool success = false,
+  }) {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+      SnackBar(
+        content: Text(message),
+        backgroundColor:
+            success ? Colors.green : null,
+      ),
     );
   }
 
@@ -296,39 +331,12 @@ class _SignUpScreenState extends State<SignUpScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(22),
+          padding: const EdgeInsets.all(20),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Join Damadam',
-                style: TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Create your account and connect with people.',
-                style: TextStyle(color: Colors.grey),
-              ),
-              const SizedBox(height: 30),
-
-              TextField(
-                controller: usernameController,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: 'Username',
-                  prefixIcon: Icon(Icons.alternate_email),
-                  border: OutlineInputBorder(),
-                ),
-              ),
-
-              const SizedBox(height: 15),
-
               TextField(
                 controller: fullNameController,
-                textInputAction: TextInputAction.next,
+                textCapitalization: TextCapitalization.words,
                 decoration: const InputDecoration(
                   labelText: 'Full Name',
                   prefixIcon: Icon(Icons.person_outline),
@@ -339,9 +347,21 @@ class _SignUpScreenState extends State<SignUpScreen> {
               const SizedBox(height: 15),
 
               TextField(
+                controller: usernameController,
+                autocorrect: false,
+                decoration: const InputDecoration(
+                  labelText: 'Username',
+                  hintText: 'username',
+                  prefixIcon: Icon(Icons.alternate_email),
+                  border: OutlineInputBorder(),
+                ),
+              ),
+
+              const SizedBox(height: 15),
+
+              TextField(
                 controller: emailController,
                 keyboardType: TextInputType.emailAddress,
-                textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
                   labelText: 'Email',
                   prefixIcon: Icon(Icons.email_outlined),
@@ -366,33 +386,8 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     },
                     icon: Icon(
                       obscurePassword
-                          ? Icons.visibility
-                          : Icons.visibility_off,
-                    ),
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 15),
-
-              TextField(
-                controller: confirmPasswordController,
-                obscureText: obscureConfirmPassword,
-                decoration: InputDecoration(
-                  labelText: 'Confirm Password',
-                  prefixIcon: const Icon(Icons.lock_outline),
-                  border: const OutlineInputBorder(),
-                  suffixIcon: IconButton(
-                    onPressed: () {
-                      setState(() {
-                        obscureConfirmPassword =
-                            !obscureConfirmPassword;
-                      });
-                    },
-                    icon: Icon(
-                      obscureConfirmPassword
-                          ? Icons.visibility
-                          : Icons.visibility_off,
+                          ? Icons.visibility_off
+                          : Icons.visibility,
                     ),
                   ),
                 ),
@@ -402,20 +397,20 @@ class _SignUpScreenState extends State<SignUpScreen> {
 
               SizedBox(
                 width: double.infinity,
-                height: 55,
+                height: 52,
                 child: FilledButton(
                   onPressed: loading ? null : signUp,
                   child: loading
                       ? const SizedBox(
-                          width: 24,
-                          height: 24,
+                          width: 23,
+                          height: 23,
                           child: CircularProgressIndicator(
-                            strokeWidth: 2,
+                            strokeWidth: 2.5,
                           ),
                         )
                       : const Text(
                           'Create Account',
-                          style: TextStyle(fontSize: 17),
+                          style: TextStyle(fontSize: 16),
                         ),
                 ),
               ),
@@ -427,9 +422,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
   }
 }
 
-// ============================================================
-// LOGIN
-// ============================================================
+
+/// ============================================================
+/// LOGIN
+/// ============================================================
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -473,12 +469,9 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-      Navigator.pushAndRemoveUntil(
+      Navigator.popUntil(
         context,
-        MaterialPageRoute(
-          builder: (_) => const HomeScreen(),
-        ),
-        (route) => false,
+        (route) => route.isFirst,
       );
     } on AuthException catch (e) {
       showMessage(e.message);
@@ -509,7 +502,7 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(22),
+          padding: const EdgeInsets.all(20),
           child: Column(
             children: [
               const SizedBox(height: 30),
@@ -517,17 +510,6 @@ class _LoginScreenState extends State<LoginScreen> {
               const Icon(
                 Icons.lock_open_rounded,
                 size: 70,
-                color: Colors.blue,
-              ),
-
-              const SizedBox(height: 20),
-
-              const Text(
-                'Welcome Back',
-                style: TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.bold,
-                ),
               ),
 
               const SizedBox(height: 30),
@@ -559,12 +541,14 @@ class _LoginScreenState extends State<LoginScreen> {
                     },
                     icon: Icon(
                       obscurePassword
-                          ? Icons.visibility
-                          : Icons.visibility_off,
+                          ? Icons.visibility_off
+                          : Icons.visibility,
                     ),
                   ),
                 ),
               ),
+
+              const SizedBox(height: 10),
 
               Align(
                 alignment: Alignment.centerRight,
@@ -582,24 +566,24 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               ),
 
-              const SizedBox(height: 10),
+              const SizedBox(height: 15),
 
               SizedBox(
                 width: double.infinity,
-                height: 55,
+                height: 52,
                 child: FilledButton(
                   onPressed: loading ? null : login,
                   child: loading
                       ? const SizedBox(
-                          width: 24,
-                          height: 24,
+                          width: 23,
+                          height: 23,
                           child: CircularProgressIndicator(
-                            strokeWidth: 2,
+                            strokeWidth: 2.5,
                           ),
                         )
                       : const Text(
                           'Login',
-                          style: TextStyle(fontSize: 17),
+                          style: TextStyle(fontSize: 16),
                         ),
                 ),
               ),
@@ -611,9 +595,10 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// ============================================================
-// FORGOT PASSWORD
-// ============================================================
+
+/// ============================================================
+/// FORGOT PASSWORD
+/// ============================================================
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -635,11 +620,11 @@ class _ForgotPasswordScreenState
     super.dispose();
   }
 
-  Future<void> resetPassword() async {
+  Future<void> sendResetEmail() async {
     final email = emailController.text.trim();
 
     if (email.isEmpty) {
-      showMessage('Enter your email.');
+      showMessage('Please enter your email.');
       return;
     }
 
@@ -653,12 +638,13 @@ class _ForgotPasswordScreenState
       if (!mounted) return;
 
       showMessage(
-        'Password reset email sent. Check your inbox.',
+        'Password reset email sent.',
+        success: true,
       );
     } on AuthException catch (e) {
       showMessage(e.message);
     } catch (e) {
-      showMessage('Could not send reset email: $e');
+      showMessage('Something went wrong: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -668,11 +654,18 @@ class _ForgotPasswordScreenState
     }
   }
 
-  void showMessage(String message) {
+  void showMessage(
+    String message, {
+    bool success = false,
+  }) {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+      SnackBar(
+        content: Text(message),
+        backgroundColor:
+            success ? Colors.green : null,
+      ),
     );
   }
 
@@ -684,27 +677,25 @@ class _ForgotPasswordScreenState
       ),
       body: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(22),
+          padding: const EdgeInsets.all(20),
           child: Column(
             children: [
               const SizedBox(height: 30),
 
-              const Text(
-                'Reset Password',
-                style: TextStyle(
-                  fontSize: 30,
-                  fontWeight: FontWeight.bold,
-                ),
+              const Icon(
+                Icons.lock_reset,
+                size: 70,
               ),
 
-              const SizedBox(height: 10),
+              const SizedBox(height: 25),
 
               const Text(
                 'Enter your email and we will send you a password reset link.',
                 textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 15),
               ),
 
-              const SizedBox(height: 30),
+              const SizedBox(height: 25),
 
               TextField(
                 controller: emailController,
@@ -720,15 +711,16 @@ class _ForgotPasswordScreenState
 
               SizedBox(
                 width: double.infinity,
-                height: 55,
+                height: 52,
                 child: FilledButton(
-                  onPressed: loading ? null : resetPassword,
+                  onPressed:
+                      loading ? null : sendResetEmail,
                   child: loading
                       ? const SizedBox(
-                          width: 24,
-                          height: 24,
+                          width: 23,
+                          height: 23,
                           child: CircularProgressIndicator(
-                            strokeWidth: 2,
+                            strokeWidth: 2.5,
                           ),
                         )
                       : const Text('Send Reset Link'),
@@ -742,9 +734,10 @@ class _ForgotPasswordScreenState
   }
 }
 
-// ============================================================
-// HOME FEED
-// ============================================================
+
+/// ============================================================
+/// HOME
+/// ============================================================
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -754,9 +747,9 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  bool loading = true;
-
   List<Map<String, dynamic>> posts = [];
+
+  bool loading = true;
 
   @override
   void initState() {
@@ -766,7 +759,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> loadPosts() async {
     try {
-      final data = await supabase
+      final response = await supabase
           .from('posts')
           .select(
             'id, user_id, content, image_url, created_at, '
@@ -777,12 +770,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ascending: false,
           );
 
-      final result = List<Map<String, dynamic>>.from(data);
-
       if (!mounted) return;
 
       setState(() {
-        posts = result;
+        posts = List<Map<String, dynamic>>.from(response);
         loading = false;
       });
     } catch (e) {
@@ -792,80 +783,99 @@ class _HomeScreenState extends State<HomeScreen> {
         loading = false;
       });
 
-      showMessage(
-        'Could not load posts: $e',
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not load posts: $e'),
+        ),
       );
     }
   }
 
-  Future<void> logout() async {
-    try {
-      await supabase.auth.signOut();
-
-      if (!mounted) return;
-
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const WelcomeScreen(),
-        ),
-        (route) => false,
-      );
-    } catch (e) {
-      showMessage('Logout failed: $e');
-    }
+  Future<void> refreshPosts() async {
+    await loadPosts();
   }
 
   Future<void> createPost() async {
-    final result = await Navigator.push(
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => const CreatePostScreen(),
       ),
     );
 
-    if (result == true && mounted) {
-      await loadPosts();
-    }
-  }
-
-  void showMessage(String message) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    await loadPosts();
+  }
+
+  Future<void> logout() async {
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Logout failed: $e'),
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.transparent,
         title: const Text(
           'Damadam',
           style: TextStyle(
             fontWeight: FontWeight.bold,
-            fontSize: 25,
           ),
         ),
+
         actions: [
+          /// PROFILE
           IconButton(
+            tooltip: 'My Profile',
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const ProfileScreen(),
+                ),
+              );
+
+              if (!mounted) return;
+
+              await loadPosts();
+            },
+            icon: const Icon(
+              Icons.person_outline,
+            ),
+          ),
+
+          /// CREATE POST
+          IconButton(
+            tooltip: 'Create Post',
             onPressed: createPost,
             icon: const Icon(
               Icons.add_circle_outline,
             ),
           ),
+
+          /// LOGOUT
           IconButton(
+            tooltip: 'Logout',
             onPressed: logout,
-            icon: const Icon(Icons.logout),
+            icon: const Icon(
+              Icons.logout,
+            ),
           ),
         ],
       ),
 
       body: RefreshIndicator(
-        onRefresh: loadPosts,
+        onRefresh: refreshPosts,
         child: loading
             ? const Center(
                 child: CircularProgressIndicator(),
@@ -876,27 +886,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         const AlwaysScrollableScrollPhysics(),
                     children: const [
                       SizedBox(height: 180),
-                      Icon(
-                        Icons.dynamic_feed_outlined,
-                        size: 70,
-                        color: Colors.grey,
-                      ),
-                      SizedBox(height: 15),
                       Center(
                         child: Text(
-                          'No posts yet',
+                          'No posts yet.\nCreate the first post!',
+                          textAlign: TextAlign.center,
                           style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: 8),
-                      Center(
-                        child: Text(
-                          'Be the first person to create a post.',
-                          style: TextStyle(
-                            color: Colors.grey,
+                            fontSize: 17,
                           ),
                         ),
                       ),
@@ -905,13 +900,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 : ListView.builder(
                     physics:
                         const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 10,
+                    padding: const EdgeInsets.only(
+                      top: 8,
+                      bottom: 20,
                     ),
                     itemCount: posts.length,
                     itemBuilder: (context, index) {
                       return PostCard(
-                        key: ValueKey(posts[index]['id']),
                         post: posts[index],
                         onDeleted: loadPosts,
                       );
@@ -921,15 +916,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
       floatingActionButton: FloatingActionButton(
         onPressed: createPost,
-        child: const Icon(Icons.edit),
+        tooltip: 'Create Post',
+        child: const Icon(Icons.add),
       ),
     );
   }
 }
 
-// ============================================================
-// CREATE POST
-// ============================================================
+
+/// ============================================================
+/// CREATE POST
+/// ============================================================
 
 class CreatePostScreen extends StatefulWidget {
   const CreatePostScreen({super.key});
@@ -941,14 +938,13 @@ class CreatePostScreen extends StatefulWidget {
 
 class _CreatePostScreenState
     extends State<CreatePostScreen> {
-  final TextEditingController contentController =
-      TextEditingController();
+  final contentController = TextEditingController();
 
   final ImagePicker picker = ImagePicker();
 
   File? selectedImage;
 
-  bool loading = false;
+  bool uploading = false;
 
   @override
   void dispose() {
@@ -956,153 +952,101 @@ class _CreatePostScreenState
     super.dispose();
   }
 
-  // ==========================================================
-  // PICK IMAGE
-  // ==========================================================
-
-  Future<void> pickImage(ImageSource source) async {
+  Future<void> pickFromGallery() async {
     try {
       final XFile? image = await picker.pickImage(
-        source: source,
+        source: ImageSource.gallery,
         imageQuality: 85,
-        maxWidth: 2000,
-        maxHeight: 2000,
       );
 
       if (image == null) return;
-
-      if (!mounted) return;
 
       setState(() {
         selectedImage = File(image.path);
       });
     } catch (e) {
-      if (!mounted) return;
-
-      showMessage(
-        'Could not select image: $e',
-      );
+      showMessage('Could not select image: $e');
     }
   }
 
-  // ==========================================================
-  // IMAGE OPTIONS
-  // ==========================================================
+  Future<void> pickFromCamera() async {
+    try {
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85,
+      );
 
-  void showImageOptions() {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (bottomSheetContext) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const CircleAvatar(
-                  child: Icon(
-                    Icons.photo_library_outlined,
-                  ),
-                ),
-                title: const Text(
-                  'Choose from Gallery',
-                ),
-                onTap: () {
-                  Navigator.pop(bottomSheetContext);
-                  pickImage(ImageSource.gallery);
-                },
-              ),
-              ListTile(
-                leading: const CircleAvatar(
-                  child: Icon(
-                    Icons.camera_alt_outlined,
-                  ),
-                ),
-                title: const Text(
-                  'Take a Photo',
-                ),
-                onTap: () {
-                  Navigator.pop(bottomSheetContext);
-                  pickImage(ImageSource.camera);
-                },
-              ),
-              const SizedBox(height: 10),
-            ],
-          ),
-        );
-      },
-    );
+      if (image == null) return;
+
+      setState(() {
+        selectedImage = File(image.path);
+      });
+    } catch (e) {
+      showMessage('Could not open camera: $e');
+    }
   }
 
-  // ==========================================================
-  // REMOVE IMAGE
-  // ==========================================================
-
-  void removeImage() {
-    if (!mounted) return;
-
-    setState(() {
-      selectedImage = null;
-    });
-  }
-
-  // ==========================================================
-  // SUBMIT POST
-  // ==========================================================
-
-  Future<void> submitPost() async {
-    if (loading) return;
-
-    final content = contentController.text.trim();
+  Future<String?> uploadPostImage(
+    File image,
+  ) async {
     final user = supabase.auth.currentUser;
 
     if (user == null) {
-      showMessage('Please login first.');
+      throw Exception('User is not logged in.');
+    }
+
+    final fileName =
+        '${user.id}_${DateTime.now().millisecondsSinceEpoch}.jpg';
+
+    final path = 'posts/$fileName';
+
+    await supabase.storage
+        .from('post-images')
+        .upload(
+          path,
+          image,
+          fileOptions: const FileOptions(
+            upsert: false,
+            contentType: 'image/jpeg',
+          ),
+        );
+
+    return supabase.storage
+        .from('post-images')
+        .getPublicUrl(path);
+  }
+
+  Future<void> publishPost() async {
+    final user = supabase.auth.currentUser;
+
+    if (user == null) {
+      showMessage('Please login again.');
       return;
     }
 
+    final content = contentController.text.trim();
+
     if (content.isEmpty && selectedImage == null) {
       showMessage(
-        'Write something or add a photo.',
+        'Write something or select an image.',
       );
       return;
     }
 
     setState(() {
-      loading = true;
+      uploading = true;
     });
 
     try {
       String? imageUrl;
 
-      // ------------------------------------------------------
-      // IMAGE UPLOAD
-      // ------------------------------------------------------
-
+      /// Upload image first
       if (selectedImage != null) {
-        final fileName =
-            '${user.id}/${DateTime.now().millisecondsSinceEpoch}.jpg';
-
-        await supabase.storage
-            .from('post-images')
-            .upload(
-              fileName,
-              selectedImage!,
-              fileOptions: const FileOptions(
-                contentType: 'image/jpeg',
-                upsert: false,
-              ),
-            );
-
-        imageUrl = supabase.storage
-            .from('post-images')
-            .getPublicUrl(fileName);
+        imageUrl =
+            await uploadPostImage(selectedImage!);
       }
 
-      // ------------------------------------------------------
-      // INSERT POST
-      // ------------------------------------------------------
-
+      /// Insert post
       await supabase.from('posts').insert({
         'user_id': user.id,
         'content': content,
@@ -1111,121 +1055,99 @@ class _CreatePostScreenState
 
       if (!mounted) return;
 
-      Navigator.pop(context, true);
-    } catch (e) {
-      if (!mounted) return;
-
       showMessage(
-        'Post failed: $e',
+        'Post published successfully.',
+        success: true,
+      );
+
+      Navigator.pop(context);
+    } on StorageException catch (e) {
+      showMessage(
+        'Image upload failed: ${e.message}',
+      );
+    } on PostgrestException catch (e) {
+      showMessage(
+        'Post could not be published: ${e.message}',
+      );
+    } catch (e) {
+      showMessage(
+        'Something went wrong: $e',
       );
     } finally {
       if (mounted) {
         setState(() {
-          loading = false;
+          uploading = false;
         });
       }
     }
   }
 
-  void showMessage(String message) {
+  void showMessage(
+    String message, {
+    bool success = false,
+  }) {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+      SnackBar(
+        content: Text(message),
+        backgroundColor:
+            success ? Colors.green : null,
+      ),
     );
   }
-
-  // ==========================================================
-  // UI
-  // ==========================================================
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Create Post',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: loading ? null : submitPost,
-            child: loading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                    ),
-                  )
-                : const Text(
-                    'POST',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-          ),
-        ],
+        title: const Text('Create Post'),
       ),
 
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(18),
+          padding: const EdgeInsets.all(16),
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
             children: [
               TextField(
                 controller: contentController,
-                maxLines: 8,
+                maxLines: 6,
                 maxLength: 1000,
-                textCapitalization:
-                    TextCapitalization.sentences,
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   hintText:
                       "What's on your mind?",
-                  filled: true,
-                  fillColor: Colors.white,
-                  border: OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.circular(18),
-                    borderSide: BorderSide.none,
-                  ),
+                  border: OutlineInputBorder(),
                 ),
               ),
 
-              const SizedBox(height: 15),
-
-              // ------------------------------------------------
-              // IMAGE PREVIEW
-              // ------------------------------------------------
+              const SizedBox(height: 12),
 
               if (selectedImage != null)
                 Stack(
                   children: [
                     ClipRRect(
                       borderRadius:
-                          BorderRadius.circular(18),
+                          BorderRadius.circular(14),
                       child: Image.file(
                         selectedImage!,
                         width: double.infinity,
-                        height: 280,
+                        height: 260,
                         fit: BoxFit.cover,
                       ),
                     ),
 
                     Positioned(
-                      top: 10,
-                      right: 10,
+                      top: 8,
+                      right: 8,
                       child: CircleAvatar(
                         backgroundColor:
-                            Colors.black.withAlpha(170),
+                            Colors.black54,
                         child: IconButton(
-                          onPressed: loading
-                              ? null
-                              : removeImage,
+                          onPressed: () {
+                            setState(() {
+                              selectedImage = null;
+                            });
+                          },
                           icon: const Icon(
                             Icons.close,
                             color: Colors.white,
@@ -1238,60 +1160,68 @@ class _CreatePostScreenState
 
               const SizedBox(height: 15),
 
-              // ------------------------------------------------
-              // ADD PHOTO
-              // ------------------------------------------------
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: uploading
+                          ? null
+                          : pickFromGallery,
+                      icon: const Icon(
+                        Icons.photo_library_outlined,
+                      ),
+                      label: const Text('Gallery'),
+                    ),
+                  ),
+
+                  const SizedBox(width: 10),
+
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: uploading
+                          ? null
+                          : pickFromCamera,
+                      icon: const Icon(
+                        Icons.camera_alt_outlined,
+                      ),
+                      label: const Text('Camera'),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 20),
 
               SizedBox(
                 width: double.infinity,
                 height: 52,
-                child: OutlinedButton.icon(
-                  onPressed: loading
-                      ? null
-                      : showImageOptions,
-                  icon: const Icon(
-                    Icons.add_photo_alternate_outlined,
-                  ),
-                  label: Text(
-                    selectedImage == null
-                        ? 'Add Photo'
-                        : 'Change Photo',
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 15),
-
-              // ------------------------------------------------
-              // PUBLISH
-              // ------------------------------------------------
-
-              SizedBox(
-                width: double.infinity,
-                height: 54,
-                child: FilledButton.icon(
+                child: FilledButton(
                   onPressed:
-                      loading ? null : submitPost,
-                  icon: loading
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child:
-                              CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white,
-                          ),
+                      uploading ? null : publishPost,
+                  child: uploading
+                      ? const Row(
+                          mainAxisAlignment:
+                              MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 22,
+                              height: 22,
+                              child:
+                                  CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: Colors.white,
+                              ),
+                            ),
+                            SizedBox(width: 12),
+                            Text('Publishing...'),
+                          ],
                         )
-                      : const Icon(Icons.send),
-                  label: Text(
-                    loading
-                        ? 'Uploading...'
-                        : 'Publish Post',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                      : const Text(
+                          'Publish Post',
+                          style: TextStyle(
+                            fontSize: 16,
+                          ),
+                        ),
                 ),
               ),
             ],
@@ -1302,9 +1232,10 @@ class _CreatePostScreenState
   }
 }
 
-// ============================================================
-// POST CARD
-// ============================================================
+
+/// ============================================================
+/// POST CARD
+/// ============================================================
 
 class PostCard extends StatefulWidget {
   final Map<String, dynamic> post;
@@ -1321,109 +1252,77 @@ class PostCard extends StatefulWidget {
 }
 
 class _PostCardState extends State<PostCard> {
-  int likeCount = 0;
-  int commentCount = 0;
-
   bool liked = false;
-  bool loadingLike = false;
+  bool likeLoading = false;
+
+  int likeCount = 0;
 
   @override
   void initState() {
     super.initState();
-    loadInteractionData();
+    loadLikeStatus();
   }
 
-  String get postId {
-    return widget.post['id'].toString();
-  }
+  Future<void> loadLikeStatus() async {
+    final user = supabase.auth.currentUser;
 
-  String get userId {
-    return widget.post['user_id'].toString();
-  }
+    if (user == null) return;
 
-  // ==========================================================
-  // LOAD LIKES / COMMENTS
-  // ==========================================================
-
-  Future<void> loadInteractionData() async {
     try {
-      final likesData = await supabase
+      final likes = await supabase
           .from('likes')
           .select('id, user_id')
-          .eq('post_id', postId);
+          .eq('post_id', widget.post['id']);
 
-      final commentsData = await supabase
-          .from('comments')
-          .select('id')
-          .eq('post_id', postId);
-
-      final List<Map<String, dynamic>> likes =
-          List<Map<String, dynamic>>.from(
-        likesData,
-      );
-
-      final List<Map<String, dynamic>> comments =
-          List<Map<String, dynamic>>.from(
-        commentsData,
-      );
-
-      final currentUser =
-          supabase.auth.currentUser;
+      final list =
+          List<Map<String, dynamic>>.from(likes);
 
       if (!mounted) return;
 
       setState(() {
-        likeCount = likes.length;
-        commentCount = comments.length;
-
-        liked = currentUser != null &&
-            likes.any(
-              (like) =>
-                  like['user_id'] == currentUser.id,
-            );
+        likeCount = list.length;
+        liked = list.any(
+          (item) => item['user_id'] == user.id,
+        );
       });
-    } catch (_) {
-      // Ignore interaction loading errors.
-    }
+    } catch (_) {}
   }
 
-  // ==========================================================
-  // LIKE
-  // ==========================================================
-
   Future<void> toggleLike() async {
-    final currentUser =
-        supabase.auth.currentUser;
+    final user = supabase.auth.currentUser;
 
-    if (currentUser == null || loadingLike) {
-      return;
-    }
+    if (user == null || likeLoading) return;
 
     setState(() {
-      loadingLike = true;
+      likeLoading = true;
     });
 
     try {
-      if (liked) {
+      final existing = await supabase
+          .from('likes')
+          .select('id')
+          .eq('post_id', widget.post['id'])
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+      if (existing != null) {
         await supabase
             .from('likes')
             .delete()
-            .eq('post_id', postId)
-            .eq('user_id', currentUser.id);
+            .eq('id', existing['id']);
 
         if (!mounted) return;
 
         setState(() {
           liked = false;
-
           if (likeCount > 0) {
             likeCount--;
           }
         });
       } else {
         await supabase.from('likes').insert({
-          'post_id': postId,
-          'user_id': currentUser.id,
+          'post_id': widget.post['id'],
+          'user_id': user.id,
         });
 
         if (!mounted) return;
@@ -1439,398 +1338,327 @@ class _PostCardState extends State<PostCard> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Like failed: $e',
+            'Like action failed: $e',
           ),
         ),
       );
     } finally {
       if (mounted) {
         setState(() {
-          loadingLike = false;
+          likeLoading = false;
         });
       }
     }
   }
 
-  // ==========================================================
-  // COMMENTS
-  // ==========================================================
-
-  Future<void> openComments() async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => CommentsScreen(
-          postId: postId,
-        ),
-      ),
-    );
-
-    if (result == true && mounted) {
-      await loadInteractionData();
-    }
-  }
-
-  // ==========================================================
-  // DELETE POST
-  // ==========================================================
-
   Future<void> deletePost() async {
-    final currentUser =
-        supabase.auth.currentUser;
+    final user = supabase.auth.currentUser;
 
-    if (currentUser == null ||
-        currentUser.id != userId) {
+    if (user == null) return;
+
+    if (widget.post['user_id'] != user.id) {
       return;
     }
 
-    final confirm =
-        await showDialog<bool>(
+    final confirmed = await showDialog<bool>(
       context: context,
-      builder: (_) {
+      builder: (context) {
         return AlertDialog(
-          title: const Text(
-            'Delete Post?',
-          ),
+          title: const Text('Delete Post?'),
           content: const Text(
             'This post will be permanently deleted.',
           ),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(
-                  context,
-                  false,
-                );
+                Navigator.pop(context, false);
               },
-              child: const Text(
-                'Cancel',
-              ),
+              child: const Text('Cancel'),
             ),
             FilledButton(
               onPressed: () {
-                Navigator.pop(
-                  context,
-                  true,
-                );
+                Navigator.pop(context, true);
               },
-              child: const Text(
-                'Delete',
-              ),
+              child: const Text('Delete'),
             ),
           ],
         );
       },
     );
 
-    if (confirm != true) return;
+    if (confirmed != true) return;
 
     try {
       await supabase
           .from('posts')
           .delete()
-          .eq('id', postId);
+          .eq('id', widget.post['id'])
+          .eq('user_id', user.id);
 
       if (!mounted) return;
 
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Post deleted.'),
+        ),
+      );
+
       await widget.onDeleted();
+    } on PostgrestException catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not delete post: ${e.message}',
+          ),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Delete failed: $e',
+            'Could not delete post: $e',
           ),
         ),
       );
     }
   }
 
-  // ==========================================================
-  // POST UI
-  // ==========================================================
+  String getUsername() {
+    final profile = widget.post['profiles'];
+
+    if (profile is Map<String, dynamic>) {
+      final username = profile['username'];
+
+      if (username != null &&
+          username.toString().isNotEmpty) {
+        return '@${username.toString()}';
+      }
+
+      final fullName = profile['full_name'];
+
+      if (fullName != null &&
+          fullName.toString().isNotEmpty) {
+        return fullName.toString();
+      }
+    }
+
+    return 'Damadam User';
+  }
+
+  String? getAvatarUrl() {
+    final profile = widget.post['profiles'];
+
+    if (profile is Map<String, dynamic>) {
+      final avatar = profile['avatar_url'];
+
+      if (avatar != null &&
+          avatar.toString().isNotEmpty) {
+        return avatar.toString();
+      }
+    }
+
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final dynamic profileData =
-        widget.post['profiles'];
-
-    final Map<String, dynamic>? profile =
-        profileData is Map
-            ? Map<String, dynamic>.from(
-                profileData,
-              )
-            : null;
-
-    final username =
-        profile?['username']?.toString() ??
-            'User';
-
-    final fullName =
-        profile?['full_name']?.toString() ??
-            username;
-
-    final avatarUrl =
-        profile?['avatar_url']?.toString();
-
     final content =
         widget.post['content']?.toString() ?? '';
 
     final imageUrl =
         widget.post['image_url']?.toString();
 
-    final currentUser =
-        supabase.auth.currentUser;
+    final userId =
+        widget.post['user_id']?.toString();
+
+    final currentUserId =
+        supabase.auth.currentUser?.id;
+
+    final isOwner =
+        userId == currentUserId;
+
+    final avatarUrl = getAvatarUrl();
 
     return Card(
       margin: const EdgeInsets.symmetric(
         horizontal: 10,
         vertical: 6,
       ),
-      elevation: 0,
-      color: Colors.white,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(15),
-        child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
-          children: [
-            // --------------------------------------------------
-            // USER HEADER
-            // --------------------------------------------------
-
-            Row(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment:
+            CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              12,
+              10,
+              6,
+              8,
+            ),
+            child: Row(
               children: [
                 CircleAvatar(
-                  radius: 23,
+                  radius: 22,
                   backgroundImage:
-                      avatarUrl != null &&
-                              avatarUrl.isNotEmpty
-                          ? NetworkImage(
-                              avatarUrl,
-                            )
+                      avatarUrl != null
+                          ? NetworkImage(avatarUrl)
                           : null,
-                  child:
-                      avatarUrl == null ||
-                              avatarUrl.isEmpty
-                          ? Text(
-                              username.isNotEmpty
-                                  ? username[0]
-                                      .toUpperCase()
-                                  : 'U',
-                              style:
-                                  const TextStyle(
-                                fontWeight:
-                                    FontWeight.bold,
-                              ),
-                            )
-                          : null,
+                  child: avatarUrl == null
+                      ? const Icon(Icons.person)
+                      : null,
                 ),
 
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
 
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        fullName,
-                        style:
-                            const TextStyle(
-                          fontWeight:
-                              FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      Text(
-                        '@$username',
-                        style:
-                            const TextStyle(
-                          color: Colors.grey,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    getUsername(),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
 
-                if (currentUser?.id == userId)
+                if (isOwner)
                   PopupMenuButton<String>(
                     onSelected: (value) {
                       if (value == 'delete') {
                         deletePost();
                       }
                     },
-                    itemBuilder: (_) {
-                      return const [
-                        PopupMenuItem<String>(
-                          value: 'delete',
-                          child: Text(
-                            'Delete',
-                          ),
+                    itemBuilder: (context) => const [
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.delete_outline,
+                            ),
+                            SizedBox(width: 8),
+                            Text('Delete'),
+                          ],
                         ),
-                      ];
-                    },
+                      ),
+                    ],
                   ),
               ],
             ),
+          ),
 
-            // --------------------------------------------------
-            // TEXT
-            // --------------------------------------------------
-
-            if (content.isNotEmpty) ...[
-              const SizedBox(height: 15),
-              Text(
+          if (content.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                12,
+                4,
+                12,
+                12,
+              ),
+              child: Text(
                 content,
                 style: const TextStyle(
                   fontSize: 16,
-                  height: 1.4,
                 ),
               ),
-            ],
+            ),
 
-            // --------------------------------------------------
-            // IMAGE
-            // --------------------------------------------------
+          if (imageUrl != null &&
+              imageUrl.isNotEmpty)
+            Image.network(
+              imageUrl,
+              width: double.infinity,
+              fit: BoxFit.cover,
+              loadingBuilder:
+                  (context, child, loadingProgress) {
+                if (loadingProgress == null) {
+                  return child;
+                }
 
-            if (imageUrl != null &&
-                imageUrl.isNotEmpty) ...[
-              const SizedBox(height: 15),
-              ClipRRect(
-                borderRadius:
-                    BorderRadius.circular(15),
-                child: Image.network(
-                  imageUrl,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                  loadingBuilder:
-                      (
-                    context,
-                    child,
-                    progress,
-                  ) {
-                    if (progress == null) {
-                      return child;
-                    }
+                return const SizedBox(
+                  height: 250,
+                  child: Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                );
+              },
+              errorBuilder:
+                  (context, error, stackTrace) {
+                return const SizedBox(
+                  height: 200,
+                  child: Center(
+                    child: Icon(
+                      Icons.broken_image_outlined,
+                      size: 50,
+                    ),
+                  ),
+                );
+              },
+            ),
 
-                    return Container(
-                      height: 220,
-                      color:
-                          Colors.grey.shade100,
-                      child: const Center(
-                        child:
-                            CircularProgressIndicator(),
-                      ),
-                    );
-                  },
-                  errorBuilder:
-                      (context, error, stackTrace) {
-                    return Container(
-                      height: 150,
-                      color:
-                          Colors.grey.shade200,
-                      child: const Center(
-                        child: Icon(
-                          Icons
-                              .broken_image_outlined,
-                          size: 50,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-            ],
-
-            const SizedBox(height: 15),
-
-            // --------------------------------------------------
-            // ACTIONS
-            // --------------------------------------------------
-
-            Row(
+          Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 8,
+              vertical: 4,
+            ),
+            child: Row(
               children: [
-                InkWell(
-                  onTap: toggleLike,
-                  borderRadius:
-                      BorderRadius.circular(20),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          liked
-                              ? Icons.favorite
-                              : Icons.favorite_border,
-                          color: liked
-                              ? Colors.red
-                              : Colors.grey,
-                        ),
-                        const SizedBox(width: 5),
-                        Text(
-                          '$likeCount',
-                        ),
-                      ],
-                    ),
+                IconButton(
+                  onPressed:
+                      likeLoading ? null : toggleLike,
+                  icon: Icon(
+                    liked
+                        ? Icons.favorite
+                        : Icons.favorite_border,
+                    color:
+                        liked ? Colors.red : null,
                   ),
                 ),
 
-                const SizedBox(width: 10),
+                Text(
+                  '$likeCount',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
 
-                InkWell(
-                  onTap: openComments,
-                  borderRadius:
-                      BorderRadius.circular(20),
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 6,
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons
-                              .chat_bubble_outline,
-                          color: Colors.grey,
+                const SizedBox(width: 8),
+
+                IconButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            CommentsScreen(
+                          postId:
+                              widget.post['id'],
                         ),
-                        const SizedBox(width: 5),
-                        Text(
-                          '$commentCount',
-                        ),
-                      ],
-                    ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(
+                    Icons.comment_outlined,
                   ),
                 ),
 
                 const Spacer(),
-
-                const Icon(
-                  Icons.share_outlined,
-                  color: Colors.grey,
-                ),
               ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-// ============================================================
-// COMMENTS
-// ============================================================
+
+/// ============================================================
+/// COMMENTS SCREEN
+/// ============================================================
 
 class CommentsScreen extends StatefulWidget {
   final String postId;
@@ -1847,13 +1675,13 @@ class CommentsScreen extends StatefulWidget {
 
 class _CommentsScreenState
     extends State<CommentsScreen> {
-  final TextEditingController commentController =
+  final commentController =
       TextEditingController();
+
+  List<Map<String, dynamic>> comments = [];
 
   bool loading = true;
   bool sending = false;
-
-  List<Map<String, dynamic>> comments = [];
 
   @override
   void initState() {
@@ -1867,34 +1695,27 @@ class _CommentsScreenState
     super.dispose();
   }
 
-  // ==========================================================
-  // LOAD COMMENTS
-  // ==========================================================
-
   Future<void> loadComments() async {
     try {
-      final data = await supabase
+      final response = await supabase
           .from('comments')
           .select(
-            'id, user_id, content, created_at, '
+            'id, post_id, user_id, content, created_at, '
             'profiles(username, full_name, avatar_url)',
           )
-          .eq(
-            'post_id',
-            widget.postId,
-          )
+          .eq('post_id', widget.postId)
           .order(
             'created_at',
             ascending: true,
           );
 
-      final result =
-          List<Map<String, dynamic>>.from(data);
-
       if (!mounted) return;
 
       setState(() {
-        comments = result;
+        comments =
+            List<Map<String, dynamic>>.from(
+          response,
+        );
         loading = false;
       });
     } catch (e) {
@@ -1910,22 +1731,18 @@ class _CommentsScreenState
     }
   }
 
-  // ==========================================================
-  // SEND COMMENT
-  // ==========================================================
+  Future<void> addComment() async {
+    final user = supabase.auth.currentUser;
 
-  Future<void> sendComment() async {
-    final content =
-        commentController.text.trim();
-
-    final user =
-        supabase.auth.currentUser;
-
-    if (content.isEmpty ||
-        user == null ||
-        sending) {
+    if (user == null) {
+      showMessage('Please login again.');
       return;
     }
+
+    final text =
+        commentController.text.trim();
+
+    if (text.isEmpty) return;
 
     setState(() {
       sending = true;
@@ -1935,15 +1752,17 @@ class _CommentsScreenState
       await supabase.from('comments').insert({
         'post_id': widget.postId,
         'user_id': user.id,
-        'content': content,
+        'content': text,
       });
 
       commentController.clear();
 
       await loadComments();
+    } on PostgrestException catch (e) {
+      showMessage(
+        'Comment failed: ${e.message}',
+      );
     } catch (e) {
-      if (!mounted) return;
-
       showMessage(
         'Comment failed: $e',
       );
@@ -1956,54 +1775,62 @@ class _CommentsScreenState
     }
   }
 
-  // ==========================================================
-  // DELETE COMMENT
-  // ==========================================================
+  String getUsername(
+    Map<String, dynamic> comment,
+  ) {
+    final profile = comment['profiles'];
 
-  Future<void> deleteComment(
-    String commentId,
-  ) async {
-    try {
-      await supabase
-          .from('comments')
-          .delete()
-          .eq(
-            'id',
-            commentId,
-          );
+    if (profile is Map<String, dynamic>) {
+      final username = profile['username'];
 
-      await loadComments();
-    } catch (e) {
-      if (!mounted) return;
+      if (username != null &&
+          username.toString().isNotEmpty) {
+        return '@${username.toString()}';
+      }
 
-      showMessage(
-        'Could not delete comment: $e',
-      );
+      final fullName = profile['full_name'];
+
+      if (fullName != null &&
+          fullName.toString().isNotEmpty) {
+        return fullName.toString();
+      }
     }
+
+    return 'Damadam User';
+  }
+
+  String? getAvatar(
+    Map<String, dynamic> comment,
+  ) {
+    final profile = comment['profiles'];
+
+    if (profile is Map<String, dynamic>) {
+      final avatar = profile['avatar_url'];
+
+      if (avatar != null &&
+          avatar.toString().isNotEmpty) {
+        return avatar.toString();
+      }
+    }
+
+    return null;
   }
 
   void showMessage(String message) {
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+      SnackBar(
+        content: Text(message),
+      ),
     );
   }
 
-  // ==========================================================
-  // UI
-  // ==========================================================
-
   @override
   Widget build(BuildContext context) {
-    final currentUser =
-        supabase.auth.currentUser;
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Comments',
-        ),
+        title: const Text('Comments'),
       ),
 
       body: Column(
@@ -2011,203 +1838,157 @@ class _CommentsScreenState
           Expanded(
             child: loading
                 ? const Center(
-                    child:
-                        CircularProgressIndicator(),
+                    child: CircularProgressIndicator(),
                   )
                 : comments.isEmpty
                     ? const Center(
                         child: Text(
-                          'No comments yet.\n'
-                          'Be the first to comment!',
-                          textAlign:
-                              TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.grey,
-                            fontSize: 16,
-                          ),
+                          'No comments yet.',
                         ),
                       )
                     : ListView.builder(
                         padding:
-                            const EdgeInsets.all(12),
-                        itemCount:
-                            comments.length,
+                            const EdgeInsets.all(10),
+                        itemCount: comments.length,
                         itemBuilder:
                             (context, index) {
                           final comment =
                               comments[index];
 
-                          final dynamic profileData =
-                              comment['profiles'];
+                          final avatar =
+                              getAvatar(comment);
 
-                          final Map<String, dynamic>?
-                              profile =
-                              profileData is Map
-                                  ? Map<String,
-                                      dynamic>.from(
-                                      profileData,
-                                    )
-                                  : null;
-
-                          final username =
-                              profile?['username']
-                                      ?.toString() ??
-                                  'User';
-
-                          final fullName =
-                              profile?['full_name']
-                                      ?.toString() ??
-                                  username;
-
-                          final avatarUrl =
-                              profile?['avatar_url']
-                                  ?.toString();
-
-                          final content =
-                              comment['content']
-                                      ?.toString() ??
-                                  '';
-
-                          final id =
-                              comment['id']
-                                  .toString();
-
-                          final commentUserId =
-                              comment['user_id']
-                                  ?.toString();
-
-                          return Card(
-                            elevation: 0,
-                            color: Colors.white,
-                            child: ListTile(
-                              leading:
-                                  CircleAvatar(
-                                backgroundImage:
-                                    avatarUrl !=
-                                                null &&
-                                            avatarUrl
-                                                .isNotEmpty
-                                        ? NetworkImage(
-                                            avatarUrl,
-                                          )
-                                        : null,
-                                child:
-                                    avatarUrl ==
-                                                null ||
-                                            avatarUrl
-                                                .isEmpty
-                                        ? Text(
-                                            username
-                                                    .isNotEmpty
-                                                ? username[0]
-                                                    .toUpperCase()
-                                                : 'U',
-                                          )
-                                        : null,
-                              ),
-
-                              title: Text(
-                                fullName,
-                                style:
-                                    const TextStyle(
-                                  fontWeight:
-                                      FontWeight.bold,
-                                ),
-                              ),
-
-                              subtitle:
-                                  Text(content),
-
-                              trailing:
-                                  currentUser?.id ==
-                                          commentUserId
-                                      ? IconButton(
-                                          icon:
-                                              const Icon(
-                                            Icons
-                                                .delete_outline,
-                                          ),
-                                          onPressed: () {
-                                            deleteComment(
-                                              id,
-                                            );
-                                          },
+                          return Padding(
+                            padding:
+                                const EdgeInsets.only(
+                              bottom: 12,
+                            ),
+                            child: Row(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                CircleAvatar(
+                                  radius: 20,
+                                  backgroundImage:
+                                      avatar != null
+                                          ? NetworkImage(
+                                              avatar,
+                                            )
+                                          : null,
+                                  child: avatar == null
+                                      ? const Icon(
+                                          Icons.person,
+                                          size: 20,
                                         )
                                       : null,
+                                ),
+
+                                const SizedBox(
+                                  width: 10,
+                                ),
+
+                                Expanded(
+                                  child: Container(
+                                    padding:
+                                        const EdgeInsets
+                                            .all(10),
+                                    decoration:
+                                        BoxDecoration(
+                                      color: Theme.of(
+                                        context,
+                                      )
+                                          .colorScheme
+                                          .surfaceContainerHighest,
+                                      borderRadius:
+                                          BorderRadius
+                                              .circular(
+                                        14,
+                                      ),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment
+                                              .start,
+                                      children: [
+                                        Text(
+                                          getUsername(
+                                            comment,
+                                          ),
+                                          style:
+                                              const TextStyle(
+                                            fontWeight:
+                                                FontWeight
+                                                    .bold,
+                                          ),
+                                        ),
+
+                                        const SizedBox(
+                                          height: 4,
+                                        ),
+
+                                        Text(
+                                          comment[
+                                                  'content']
+                                              ?.toString() ??
+                                              '',
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
                             ),
                           );
                         },
                       ),
           ),
 
-          // ----------------------------------------------------
-          // COMMENT INPUT
-          // ----------------------------------------------------
-
           SafeArea(
-            child: Container(
-              padding:
-                  const EdgeInsets.fromLTRB(
-                12,
-                8,
-                12,
-                8,
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                10,
+                6,
+                10,
+                10,
               ),
-              color: Colors.white,
               child: Row(
                 children: [
                   Expanded(
                     child: TextField(
                       controller:
                           commentController,
+                      maxLines: 3,
+                      minLines: 1,
                       textInputAction:
-                          TextInputAction.send,
-                      onSubmitted: (_) {
-                        sendComment();
-                      },
+                          TextInputAction.newline,
                       decoration:
-                          InputDecoration(
+                          const InputDecoration(
                         hintText:
                             'Write a comment...',
-                        filled: true,
-                        fillColor:
-                            const Color(
-                          0xFFF1F3F6,
-                        ),
                         border:
-                            OutlineInputBorder(
-                          borderRadius:
-                              BorderRadius.circular(
-                            25,
-                          ),
-                          borderSide:
-                              BorderSide.none,
-                        ),
+                            OutlineInputBorder(),
                       ),
                     ),
                   ),
 
                   const SizedBox(width: 8),
 
-                  CircleAvatar(
-                    radius: 24,
-                    child: IconButton(
-                      onPressed: sending
-                          ? null
-                          : sendComment,
-                      icon: sending
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child:
-                                  CircularProgressIndicator(
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Icon(
-                              Icons.send,
+                  IconButton.filled(
+                    onPressed:
+                        sending ? null : addComment,
+                    icon: sending
+                        ? const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child:
+                                CircularProgressIndicator(
+                              strokeWidth: 2,
                             ),
-                    ),
+                          )
+                        : const Icon(
+                            Icons.send,
+                          ),
                   ),
                 ],
               ),
@@ -2218,3 +1999,31 @@ class _CommentsScreenState
     );
   }
 }
+
+⚠️ Sirf ek cheez change karni hai
+
+Code ke top par:
+
+const String supabasePublishableKey =
+    'YOUR_SUPABASE_PUBLISHABLE_KEY';
+
+isko tumhare existing working publishable/anon key se replace karna hai.
+
+Apni key mujhe dobara bhejne ki zarurat nahi. Jo key tumhare current working "main.dart" mein hai, wohi yahan paste kar do.
+
+Ab test order
+
+1. "main.dart" replace karo.
+2. "YOUR_SUPABASE_PUBLISHABLE_KEY" ko apni existing key se replace karo.
+3. Save.
+4. "flutter pub get"
+5. Run/build APK.
+6. Login.
+7. Home par person/profile icon dabao.
+8. Profile open hona chahiye.
+9. Edit Profile dabao.
+10. Name/Bio change karke Save.
+11. Avatar aur Cover image select karke Save.
+12. Phir Home → Create Post → image upload test.
+
+Important: Agar build mein koi error aaye, screenshot ki zarurat nahi—bas red error ka exact text copy karke bhej dena. Main usi error ke according next fix dunga.
