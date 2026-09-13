@@ -1,4 +1,3 @@
-
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -6,7 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'screens/profile/profile_screen.dart';
 import 'screens/profile/public_profile_screen.dart';
-import 'screens/profile/notifications/notifications_screen.dart';
+import 'screens/notifications_screen.dart';
 import 'services/notification_service.dart';
 
 const String supabaseUrl =
