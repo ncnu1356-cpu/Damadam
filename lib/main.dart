@@ -6,6 +6,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'screens/profile/profile_screen.dart';
 import 'screens/profile/public_profile_screen.dart';
+import 'screens/profile/notifications/notifications_screen.dart';
+import 'services/notification_service.dart';
 
 const String supabaseUrl =
     'https://fhmshhmklsqgiyvcdvbr.supabase.co';
@@ -286,7 +288,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     } finally {
       if (mounted) {
         setState(() => loading = false);
-      } 
+      }
     }
   }
 
@@ -740,11 +742,35 @@ class _HomeScreenState
     extends State<HomeScreen> {
   List<Map<String, dynamic>> posts = [];
   bool loading = true;
+  int unreadNotificationCount = 0;
 
   @override
   void initState() {
     super.initState();
     loadPosts();
+    loadUnreadNotificationCount();
+  }
+
+  Future<void> loadUnreadNotificationCount() async {
+    final user = supabase.auth.currentUser;
+
+    if (user == null) return;
+
+    try {
+      final response = await supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('is_read', false);
+
+      if (!mounted) return;
+
+      setState(() {
+        unreadNotificationCount = response.length;
+      });
+    } catch (e) {
+      debugPrint('Notification count error: $e');
+    }
   }
 
   Future<void> loadPosts() async {
@@ -786,6 +812,7 @@ class _HomeScreenState
 
   Future<void> refreshPosts() async {
     await loadPosts();
+    await loadUnreadNotificationCount();
   }
 
   Future<void> createPost() async {
@@ -829,6 +856,63 @@ class _HomeScreenState
           ),
         ),
         actions: [
+          Stack(
+            children: [
+              IconButton(
+                tooltip: 'Notifications',
+                onPressed: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          const NotificationsScreen(),
+                    ),
+                  );
+
+                  if (!mounted) return;
+
+                  await loadUnreadNotificationCount();
+                },
+                icon: const Icon(
+                  Icons.notifications_outlined,
+                ),
+              ),
+              if (unreadNotificationCount > 0)
+                Positioned(
+                  right: 5,
+                  top: 5,
+                  child: Container(
+                    constraints: const BoxConstraints(
+                      minWidth: 18,
+                      minHeight: 18,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: Colors.white,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Text(
+                      unreadNotificationCount > 99
+                          ? '99+'
+                          : '$unreadNotificationCount',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
           IconButton(
             tooltip: 'My Profile',
             onPressed: () async {
@@ -1342,6 +1426,47 @@ class _PostCardState
     } catch (_) {}
   }
 
+  Future<void> _sendLikeNotification() async {
+    final currentUser = supabase.auth.currentUser;
+    final postOwnerId = widget.post['user_id']?.toString();
+    final postId = widget.post['id']?.toString();
+
+    if (currentUser == null ||
+        postOwnerId == null ||
+        postId == null ||
+        postOwnerId == currentUser.id) {
+      return;
+    }
+
+    try {
+      final profile = await supabase
+          .from('profiles')
+          .select('username, full_name')
+          .eq('id', currentUser.id)
+          .maybeSingle();
+
+      final username =
+          profile?['username']?.toString().trim();
+
+      final displayName =
+          username != null && username.isNotEmpty
+              ? '@$username'
+              : (profile?['full_name']?.toString().trim().isNotEmpty == true
+                  ? profile!['full_name'].toString().trim()
+                  : 'Someone');
+
+      await NotificationService().createNotification(
+        userId: postOwnerId,
+        senderId: currentUser.id,
+        type: 'like',
+        postId: postId,
+        message: '$displayName liked your post',
+      );
+    } catch (e) {
+      debugPrint('Like notification error: $e');
+    }
+  }
+
   Future<void> toggleLike() async {
     final user =
         supabase.auth.currentUser;
@@ -1402,6 +1527,9 @@ class _PostCardState
           liked = true;
           likeCount++;
         });
+
+        // Send notification without blocking the like action.
+        await _sendLikeNotification();
       }
     } catch (e) {
       if (!mounted) return;
@@ -1926,6 +2054,53 @@ class _CommentsScreenState
     }
   }
 
+  Future<void> _sendCommentNotification(String commentText) async {
+    final currentUser = supabase.auth.currentUser;
+
+    if (currentUser == null) return;
+
+    try {
+      final post = await supabase
+          .from('posts')
+          .select('user_id')
+          .eq('id', widget.postId)
+          .maybeSingle();
+
+      final postOwnerId = post?['user_id']?.toString();
+
+      if (postOwnerId == null ||
+          postOwnerId == currentUser.id) {
+        return;
+      }
+
+      final profile = await supabase
+          .from('profiles')
+          .select('username, full_name')
+          .eq('id', currentUser.id)
+          .maybeSingle();
+
+      final username =
+          profile?['username']?.toString().trim();
+
+      final displayName =
+          username != null && username.isNotEmpty
+              ? '@$username'
+              : (profile?['full_name']?.toString().trim().isNotEmpty == true
+                  ? profile!['full_name'].toString().trim()
+                  : 'Someone');
+
+      await NotificationService().createNotification(
+        userId: postOwnerId,
+        senderId: currentUser.id,
+        type: 'comment',
+        postId: widget.postId,
+        message: '$displayName commented on your post',
+      );
+    } catch (e) {
+      debugPrint('Comment notification error: $e');
+    }
+  }
+
   Future<void> addComment() async {
     final user =
         supabase.auth.currentUser;
@@ -1959,6 +2134,9 @@ class _CommentsScreenState
       });
 
       commentController.clear();
+
+      // Send notification without blocking comment refresh.
+      await _sendCommentNotification(text);
 
       await loadComments();
     } on PostgrestException catch (e) {
