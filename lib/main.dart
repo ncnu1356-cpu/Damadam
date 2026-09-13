@@ -91,7 +91,7 @@ class WelcomeScreen extends StatelessWidget {
                     Icons.people_alt_rounded,
                     size: 55,
                     color: Theme.of(context)
-                        .colorSchemea
+                        .colorScheme
                         .primary,
                   ),
                 ),
@@ -286,7 +286,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     } finally {
       if (mounted) {
         setState(() => loading = false);
-      }
+      } 
     }
   }
 
