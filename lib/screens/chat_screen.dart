@@ -9,10 +9,7 @@ import '../services/dm_service.dart';
 class ChatScreen extends StatefulWidget {
   final Map<String, dynamic> conversation;
 
-  const ChatScreen({
-    super.key,
-    required this.conversation,
-  });
+  const ChatScreen({super.key, required this.conversation});
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -33,17 +30,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
   String get _me => _supabase.auth.currentUser?.id ?? '';
 
-  String get _conversationId =>
-      widget.conversation['id'].toString();
+  String get _conversationId => widget.conversation['id'].toString();
 
   Map<String, dynamic> get _otherUser {
-    final isReq =
-        widget.conversation['requester_id']?.toString() == _me;
-    final o = isReq
-        ? widget.conversation['recipient']
-        : widget.conversation['requester'];
+    final isReq = widget.conversation['requester_id']?.toString() == _me;
+    final o = isReq ? widget.conversation['recipient'] : widget.conversation['requester'];
     if (o is Map<String, dynamic>) return o;
-    return {};
+    return <String, dynamic>{};
   }
 
   @override
@@ -89,7 +82,7 @@ class _ChatScreenState extends State<ChatScreen> {
             column: 'conversation_id',
             value: _conversationId,
           ),
-          callback: (payload) {
+          callback: (_) {
             if (!mounted) return;
             _load();
           },
@@ -117,10 +110,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _controller.clear();
 
     try {
-      await _dm.sendText(
-        conversationId: _conversationId,
-        text: text,
-      );
+      await _dm.sendText(conversationId: _conversationId, text: text);
       await _load();
     } catch (e) {
       _show('Send failed: $e');
@@ -140,9 +130,8 @@ class _ChatScreenState extends State<ChatScreen> {
       setState(() => sending = true);
 
       final bytes = await File(x.path).readAsBytes();
-      final ext = x.path.contains('.')
-          ? x.path.split('.').last.toLowerCase()
-          : 'jpg';
+      final ext =
+          x.path.contains('.') ? x.path.split('.').last.toLowerCase() : 'jpg';
 
       final url = await _dm.uploadChatImage(
         conversationId: _conversationId,
@@ -150,13 +139,9 @@ class _ChatScreenState extends State<ChatScreen> {
         extension: ext,
       );
 
-      if (url == null) throw Exception('Upload returned null');
+      if (url == null) throw Exception('Upload failed');
 
-      await _dm.sendImage(
-        conversationId: _conversationId,
-        imageUrl: url,
-      );
-
+      await _dm.sendImage(conversationId: _conversationId, imageUrl: url);
       await _load();
     } catch (e) {
       _show('Image failed: $e');
@@ -165,23 +150,20 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  // ✅ FIX 3: delete with proper feedback
   Future<void> _deleteMessage(Map<String, dynamic> msg) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete message?'),
-        content: const Text(
-          'This will delete the message for both of you.',
-        ),
+        content: const Text('This will delete the message for both of you.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Delete'),
           ),
@@ -194,6 +176,10 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       await _dm.deleteMessage(msg['id'].toString());
       await _load();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Message deleted')),
+      );
     } catch (e) {
       _show('Delete failed: $e');
     }
@@ -201,9 +187,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _show(String msg) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(msg)),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   String _displayName(Map<String, dynamic> u) {
@@ -214,13 +198,23 @@ class _ChatScreenState extends State<ChatScreen> {
     return 'Damadam User';
   }
 
+  // ✅ FIX 4: proper time format
   String _timeLabel(String? iso) {
     if (iso == null) return '';
     final dt = DateTime.tryParse(iso)?.toLocal();
     if (dt == null) return '';
-    final h = dt.hour.toString().padLeft(2, '0');
-    final m = dt.minute.toString().padLeft(2, '0');
-    return '$h:$m';
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+
+    if (diff.inSeconds < 60) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) {
+      final h = dt.hour.toString().padLeft(2, '0');
+      final m = dt.minute.toString().padLeft(2, '0');
+      return '$h:$m';
+    }
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${dt.day}/${dt.month}/${dt.year}';
   }
 
   @override
@@ -240,21 +234,16 @@ class _ChatScreenState extends State<ChatScreen> {
             CircleAvatar(
               radius: 18,
               backgroundColor: Colors.blueGrey.shade100,
-              backgroundImage:
-                  avatar.isNotEmpty ? NetworkImage(avatar) : null,
+              backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
               child: avatar.isEmpty
-                  ? const Icon(Icons.person,
-                      size: 18, color: Colors.white)
+                  ? const Icon(Icons.person, size: 18, color: Colors.white)
                   : null,
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 _displayName(other),
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 16,
-                ),
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -270,12 +259,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     ? _emptyState()
                     : ListView.builder(
                         controller: _scroll,
-                        padding: const EdgeInsets.fromLTRB(
-                          10,
-                          12,
-                          10,
-                          12,
-                        ),
+                        padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
                         itemCount: messages.length,
                         itemBuilder: (context, index) {
                           final msg = messages[index];
@@ -297,19 +281,17 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.waving_hand_rounded,
-              size: 60,
-              color: Colors.amber.shade400,
-            ),
+            Icon(Icons.waving_hand_rounded, size: 60, color: Colors.amber.shade400),
             const SizedBox(height: 16),
             Text(
               'Say hi to ${_displayName(_otherUser)}',
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Long-press your own message to delete it',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
         ),
@@ -323,31 +305,23 @@ class _ChatScreenState extends State<ChatScreen> {
     final imageUrl = msg['image_url']?.toString() ?? '';
     final time = _timeLabel(msg['created_at']?.toString());
 
-    final bubbleColor =
-        isMe ? Colors.blue.shade500 : Colors.white;
+    final bubbleColor = isMe ? Colors.blue.shade500 : Colors.white;
     final textColor = isMe ? Colors.white : Colors.black87;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
-        mainAxisAlignment:
-            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Flexible(
             child: GestureDetector(
-              onLongPress: isMe && !deleted
-                  ? () => _deleteMessage(msg)
-                  : null,
+              onLongPress: isMe && !deleted ? () => _deleteMessage(msg) : null,
               child: Container(
                 constraints: BoxConstraints(
-                  maxWidth:
-                      MediaQuery.of(context).size.width * 0.75,
+                  maxWidth: MediaQuery.of(context).size.width * 0.75,
                 ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 10,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
                   color: bubbleColor,
                   borderRadius: BorderRadius.only(
@@ -357,10 +331,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     bottomRight: Radius.circular(isMe ? 4 : 16),
                   ),
                   boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(10),
-                      blurRadius: 4,
-                    ),
+                    BoxShadow(color: Colors.black.withAlpha(10), blurRadius: 4),
                   ],
                 ),
                 child: Column(
@@ -370,21 +341,15 @@ class _ChatScreenState extends State<ChatScreen> {
                       Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
-                            Icons.block,
-                            size: 14,
-                            color: isMe
-                                ? Colors.white70
-                                : Colors.grey,
-                          ),
+                          Icon(Icons.block,
+                              size: 14,
+                              color: isMe ? Colors.white70 : Colors.grey),
                           const SizedBox(width: 6),
                           Text(
                             'This message was deleted',
                             style: TextStyle(
                               fontStyle: FontStyle.italic,
-                              color: isMe
-                                  ? Colors.white70
-                                  : Colors.grey.shade600,
+                              color: isMe ? Colors.white70 : Colors.grey.shade600,
                               fontSize: 13,
                             ),
                           ),
@@ -395,40 +360,28 @@ class _ChatScreenState extends State<ChatScreen> {
                         Text(
                           content,
                           style: TextStyle(
-                            color: textColor,
-                            fontSize: 15,
-                            height: 1.35,
-                          ),
+                              color: textColor, fontSize: 15, height: 1.35),
                         ),
                       if (imageUrl.isNotEmpty) ...[
-                        if (content.isNotEmpty)
-                          const SizedBox(height: 6),
+                        if (content.isNotEmpty) const SizedBox(height: 6),
                         ClipRRect(
                           borderRadius: BorderRadius.circular(10),
                           child: Image.network(
                             imageUrl,
                             width: 220,
                             fit: BoxFit.cover,
-                            loadingBuilder:
-                                (context, child, progress) {
+                            loadingBuilder: (context, child, progress) {
                               if (progress == null) return child;
                               return const SizedBox(
                                 height: 140,
-                                child: Center(
-                                  child:
-                                      CircularProgressIndicator(),
-                                ),
+                                child: Center(child: CircularProgressIndicator()),
                               );
                             },
-                            errorBuilder:
-                                (context, error, stackTrace) =>
-                                    const SizedBox(
+                            errorBuilder: (context, error, stackTrace) =>
+                                const SizedBox(
                               height: 120,
                               child: Center(
-                                child: Icon(
-                                  Icons.broken_image,
-                                  color: Colors.white70,
-                                ),
+                                child: Icon(Icons.broken_image, color: Colors.white70),
                               ),
                             ),
                           ),
@@ -439,9 +392,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     Text(
                       time,
                       style: TextStyle(
-                        color: isMe
-                            ? Colors.white70
-                            : Colors.grey.shade500,
+                        color: isMe ? Colors.white70 : Colors.grey.shade500,
                         fontSize: 10,
                       ),
                     ),
@@ -482,10 +433,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     borderRadius: BorderRadius.circular(24),
                     borderSide: BorderSide.none,
                   ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 ),
               ),
             ),
@@ -497,9 +446,7 @@ class _ChatScreenState extends State<ChatScreen> {
                       width: 18,
                       height: 18,
                       child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
+                          strokeWidth: 2, color: Colors.white),
                     )
                   : const Icon(Icons.send),
             ),
