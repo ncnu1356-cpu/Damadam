@@ -1558,13 +1558,18 @@ class _CommentsScreenState extends State<CommentsScreen> {
     }
   }
 
+  // ============================================================
+  // ✅ UPDATED: Now handles both comments AND replies
+  // ============================================================
   Future<void> _sendCommentNotification(
     String commentText,
+    Map<String, dynamic>? parentComment,
   ) async {
     final currentUser = supabase.auth.currentUser;
     if (currentUser == null) return;
 
     try {
+      // Post owner
       final post = await supabase
           .from('posts')
           .select('user_id')
@@ -1573,11 +1578,11 @@ class _CommentsScreenState extends State<CommentsScreen> {
 
       final postOwnerId = post?['user_id']?.toString();
 
-      if (postOwnerId == null ||
-          postOwnerId == currentUser.id) {
-        return;
-      }
+      // Parent comment author (if this is a reply)
+      final parentAuthorId =
+          parentComment?['user_id']?.toString();
 
+      // Current user's display name
       final profile = await supabase
           .from('profiles')
           .select('username, full_name')
@@ -1598,13 +1603,36 @@ class _CommentsScreenState extends State<CommentsScreen> {
                   ? profile!['full_name'].toString().trim()
                   : 'Someone');
 
-      await NotificationService().createNotification(
-        userId: postOwnerId,
-        senderId: currentUser.id,
-        type: 'comment',
-        postId: widget.postId,
-        message: '$displayName commented on your post',
-      );
+      final notified = <String>{};
+
+      // 1. Notify parent comment author (if it's a reply)
+      if (parentAuthorId != null &&
+          parentAuthorId != currentUser.id &&
+          !notified.contains(parentAuthorId)) {
+        await NotificationService().createNotification(
+          userId: parentAuthorId,
+          senderId: currentUser.id,
+          type: 'reply',
+          postId: widget.postId,
+          message: '$displayName replied to your comment',
+        );
+        notified.add(parentAuthorId);
+      }
+
+      // 2. Notify post owner (if different)
+      if (postOwnerId != null &&
+          postOwnerId != currentUser.id &&
+          !notified.contains(postOwnerId)) {
+        await NotificationService().createNotification(
+          userId: postOwnerId,
+          senderId: currentUser.id,
+          type: 'comment',
+          postId: widget.postId,
+          message: parentComment != null
+              ? '$displayName replied on your post'
+              : '$displayName commented on your post',
+        );
+      }
     } catch (e) {
       debugPrint('Comment notification error: $e');
     }
@@ -1639,12 +1667,15 @@ class _CommentsScreenState extends State<CommentsScreen> {
         'parent_id': _replyTo?['id'],
       });
 
+      // ✅ Capture _replyTo BEFORE clearing it
+      final parentForNotification = _replyTo;
+
       commentController.clear();
 
       if (!mounted) return;
       setState(() => _replyTo = null);
 
-      await _sendCommentNotification(text);
+      await _sendCommentNotification(text, parentForNotification);
       await loadComments();
     } on PostgrestException catch (e) {
       showMessage('Comment failed: ${e.message}');
