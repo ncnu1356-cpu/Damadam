@@ -39,7 +39,6 @@ class DmService {
     }
   }
 
-  /// Returns existing conversation (any status) or null
   Future<Map<String, dynamic>?> findConversation(
     String otherUserId,
   ) async {
@@ -81,7 +80,7 @@ class DmService {
         .select()
         .maybeSingle();
 
-    // ✅ NEW: send a notification to the recipient
+    // Send a notification to the recipient
     if (res != null) {
       await _sendRequestNotification(otherUserId);
     }
@@ -89,7 +88,6 @@ class DmService {
     return res;
   }
 
-  // ✅ NEW: notification helper
   Future<void> _sendRequestNotification(
     String otherUserId,
   ) async {
@@ -123,7 +121,6 @@ class DmService {
         'is_read': false,
       });
     } catch (e) {
-      // Notification failure should not break the request flow
       if (kDebugMode) {
         debugPrint('DM request notification failed: $e');
       }
@@ -147,21 +144,20 @@ class DmService {
     return List<Map<String, dynamic>>.from(res);
   }
 
+  // ✅ Uses SECURITY DEFINER function (bypasses RLS safely)
   Future<void> acceptRequest(String conversationId) async {
-    await _supabase
-        .from('dm_conversations')
-        .update({
-          'status': 'accepted',
-          'accepted_at': DateTime.now().toIso8601String(),
-        })
-        .eq('id', conversationId);
+    await _supabase.rpc(
+      'accept_dm_request',
+      params: {'conversation_id': conversationId},
+    );
   }
 
+  // ✅ Uses SECURITY DEFINER function
   Future<void> declineRequest(String conversationId) async {
-    await _supabase
-        .from('dm_conversations')
-        .delete()
-        .eq('id', conversationId);
+    await _supabase.rpc(
+      'decline_dm_request',
+      params: {'conversation_id': conversationId},
+    );
   }
 
   // ============================================================
@@ -220,18 +216,18 @@ class DmService {
     return List<Map<String, dynamic>>.from(res);
   }
 
+  // ✅ Uses RPC to bypass RLS
   Future<void> sendText({
     required String conversationId,
     required String text,
   }) async {
-    final me = currentUserId;
-    if (me == null) return;
-
-    await _supabase.from('dm_messages').insert({
-      'conversation_id': conversationId,
-      'sender_id': me,
-      'content': text,
-    });
+    await _supabase.rpc(
+      'send_dm_message',
+      params: {
+        'conversation_id': conversationId,
+        'message_content': text,
+      },
+    );
   }
 
   Future<String?> uploadChatImage({
@@ -259,18 +255,18 @@ class DmService {
         .getPublicUrl(path);
   }
 
+  // ✅ Uses RPC to bypass RLS
   Future<void> sendImage({
     required String conversationId,
     required String imageUrl,
   }) async {
-    final me = currentUserId;
-    if (me == null) return;
-
-    await _supabase.from('dm_messages').insert({
-      'conversation_id': conversationId,
-      'sender_id': me,
-      'image_url': imageUrl,
-    });
+    await _supabase.rpc(
+      'send_dm_message',
+      params: {
+        'conversation_id': conversationId,
+        'message_image_url': imageUrl,
+      },
+    );
   }
 
   Future<void> deleteMessage(String messageId) async {
