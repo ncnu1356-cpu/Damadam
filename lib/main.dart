@@ -47,7 +47,7 @@ class DamadamApp extends StatelessWidget {
 }
 
 // ============================================================
-// AUTH GATE — now refreshes stale sessions automatically
+// AUTH GATE — refreshes stale sessions automatically
 // ============================================================
 
 class AuthGate extends StatefulWidget {
@@ -92,7 +92,7 @@ class _AuthGateState extends State<AuthGate> {
 }
 
 // ============================================================
-// MAIN SHELL — bottom navigation
+// MAIN SHELL — bottom navigation with DM badge
 // ============================================================
 
 class MainShell extends StatefulWidget {
@@ -104,6 +104,9 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _index = 0;
+  int _dmUnreadCount = 0;
+
+  RealtimeChannel? _dmBadgeChannel;
 
   final _pages = const [
     HomeTab(),
@@ -111,6 +114,60 @@ class _MainShellState extends State<MainShell> {
     ProfileScreen(),
     MoreTab(),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _subscribeDmBadge();
+  }
+
+  @override
+  void dispose() {
+    _dmBadgeChannel?.unsubscribe();
+    super.dispose();
+  }
+
+  // ✅ Listens for new DM messages sent to me → increments badge
+  void _subscribeDmBadge() {
+    final me = supabase.auth.currentUser?.id;
+    if (me == null) return;
+
+    _dmBadgeChannel = supabase
+        .channel('dm:badge:$me')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'dm_messages',
+          callback: (payload) async {
+            final senderId =
+                payload.newRecord['sender_id']?.toString();
+            if (senderId == null || senderId == me) return;
+
+            final convId =
+                payload.newRecord['conversation_id']?.toString();
+            if (convId == null) return;
+
+            // Verify I'm a participant of this conversation
+            try {
+              final conv = await supabase
+                  .from('dm_conversations')
+                  .select('id')
+                  .eq('id', convId)
+                  .or('requester_id.eq.$me,recipient_id.eq.$me')
+                  .maybeSingle();
+
+              if (conv == null) return;
+              if (!mounted) return;
+
+              // Only increment if user isn't currently on the 1on1 tab
+              if (_index != 1) {
+                setState(() => _dmUnreadCount++);
+              }
+            } catch (_) {}
+          },
+        )
+        .subscribe();
+  }
 
   void _onTap(int i) {
     // Middle "Share" button → open create post, don't change tab
@@ -124,14 +181,23 @@ class _MainShellState extends State<MainShell> {
       return;
     }
 
-    // Map index: 0=Home, 1=DM, 3=Profile, 4=More → pageIndex
+    // Map: 0=Home, 1=DM, 3=Profile, 4=More → pageIndex
     final pageIndex = i < 2 ? i : i - 1;
-    setState(() => _index = pageIndex);
+
+    // Clear DM badge when entering the 1on1 tab
+    if (pageIndex == 1) {
+      setState(() {
+        _index = pageIndex;
+        _dmUnreadCount = 0;
+      });
+    } else {
+      setState(() => _index = pageIndex);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Map state index to visible bottom nav item index
+    // Map state index to visible bottom nav index
     final navIndex = _index < 2 ? _index : _index + 1;
 
     return Scaffold(
@@ -142,28 +208,49 @@ class _MainShellState extends State<MainShell> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: navIndex,
         onDestinationSelected: _onTap,
-        destinations: const [
-          NavigationDestination(
+        destinations: [
+          const NavigationDestination(
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home),
             label: 'Home',
           ),
+
+          // ✅ 1on1 with DM badge
           NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline),
-            selectedIcon: Icon(Icons.chat_bubble),
+            icon: _dmUnreadCount > 0
+                ? Badge(
+                    label: Text(
+                      _dmUnreadCount > 99
+                          ? '99+'
+                          : '$_dmUnreadCount',
+                    ),
+                    child: const Icon(Icons.chat_bubble_outline),
+                  )
+                : const Icon(Icons.chat_bubble_outline),
+            selectedIcon: _dmUnreadCount > 0
+                ? Badge(
+                    label: Text(
+                      _dmUnreadCount > 99
+                          ? '99+'
+                          : '$_dmUnreadCount',
+                    ),
+                    child: const Icon(Icons.chat_bubble),
+                  )
+                : const Icon(Icons.chat_bubble),
             label: '1on1',
           ),
-          NavigationDestination(
+
+          const NavigationDestination(
             icon: Icon(Icons.add_circle_outline),
             selectedIcon: Icon(Icons.add_circle),
             label: 'Share',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.person_outline),
             selectedIcon: Icon(Icons.person),
             label: 'Profile',
           ),
-          NavigationDestination(
+          const NavigationDestination(
             icon: Icon(Icons.more_horiz),
             selectedIcon: Icon(Icons.more_horiz),
             label: 'More',
@@ -697,8 +784,7 @@ class MoreTab extends StatelessWidget {
             onTap: () => _show('About', context),
           ),
           ListTile(
-            leading:
-                const Icon(Icons.logout, color: Colors.red),
+            leading: const Icon(Icons.logout, color: Colors.red),
             title: const Text(
               'Logout',
               style: TextStyle(
