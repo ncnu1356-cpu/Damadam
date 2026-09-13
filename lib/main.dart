@@ -20,12 +20,10 @@ SupabaseClient get supabase => Supabase.instance.client;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   await Supabase.initialize(
     url: supabaseUrl,
     anonKey: supabasePublishableKey,
   );
-
   runApp(const DamadamApp());
 }
 
@@ -59,14 +57,721 @@ class AuthGate extends StatelessWidget {
             snapshot.data?.session ?? supabase.auth.currentSession;
 
         if (session != null) {
-          return const HomeScreen();
+          return const MainShell();
         }
-
         return const WelcomeScreen();
       },
     );
   }
 }
+
+// ============================================================
+// MAIN SHELL — bottom navigation
+// ============================================================
+
+class MainShell extends StatefulWidget {
+  const MainShell({super.key});
+
+  @override
+  State<MainShell> createState() => _MainShellState();
+}
+
+class _MainShellState extends State<MainShell> {
+  int _index = 0;
+
+  final _pages = const [
+    HomeTab(),
+    DMTab(),
+    ProfileScreen(),
+    MoreTab(),
+  ];
+
+  void _onTap(int i) {
+    // Middle "Share" button → open create post, don't change tab
+    if (i == 2) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const CreatePostScreen(),
+        ),
+      );
+      return;
+    }
+
+    // Map index: 0=Home, 1=DM, 3=Profile, 4=More → pageIndex
+    final pageIndex = i < 2 ? i : i - 1;
+    setState(() => _index = pageIndex);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Map our state index to visible bottom nav item index
+    // 0 → Home(0), 1 → DM(1), 2 → Profile(3), 3 → More(4)
+    final navIndex = _index < 2 ? _index : _index + 1;
+
+    return Scaffold(
+      body: IndexedStack(
+        index: _index,
+        children: _pages,
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: navIndex,
+        onDestinationSelected: _onTap,
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home),
+            label: 'Home',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.chat_bubble_outline),
+            selectedIcon: Icon(Icons.chat_bubble),
+            label: '1on1',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.add_circle_outline),
+            selectedIcon: Icon(Icons.add_circle),
+            label: 'Share',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            selectedIcon: Icon(Icons.person),
+            label: 'Profile',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.more_horiz),
+            selectedIcon: Icon(Icons.more_horiz),
+            label: 'More',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ============================================================
+// HOME TAB — feed with For You / For Me toggle
+// ============================================================
+
+class HomeTab extends StatefulWidget {
+  const HomeTab({super.key});
+
+  @override
+  State<HomeTab> createState() => _HomeTabState();
+}
+
+class _HomeTabState extends State<HomeTab> {
+  List<Map<String, dynamic>> allPosts = [];
+  List<Map<String, dynamic>> forMePosts = [];
+
+  List<String> _followingIds = [];
+
+  bool loading = true;
+  bool showForYou = true;
+  int unreadNotificationCount = 0;
+
+  RealtimeChannel? _postsChannel;
+  RealtimeChannel? _notificationsChannel;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAll();
+    _subscribeToPosts();
+    _subscribeToNotifications();
+  }
+
+  @override
+  void dispose() {
+    _postsChannel?.unsubscribe();
+    _notificationsChannel?.unsubscribe();
+    super.dispose();
+  }
+
+  Future<void> _loadAll() async {
+    await Future.wait([
+      _loadFollowingIds(),
+      _loadPosts(),
+      _loadUnreadNotificationCount(),
+    ]);
+    _rebuildForMe();
+    if (!mounted) return;
+    setState(() => loading = false);
+  }
+
+  Future<void> _loadFollowingIds() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final res = await supabase
+          .from('follows')
+          .select('following_id')
+          .eq('follower_id', user.id);
+
+      _followingIds = List<Map<String, dynamic>>.from(res)
+          .map((r) => r['following_id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toList();
+    } catch (e) {
+      debugPrint('Load following error: $e');
+    }
+  }
+
+  Future<void> _loadPosts() async {
+    try {
+      final response = await supabase
+          .from('posts')
+          .select(
+            'id, user_id, content, image_url, created_at, '
+            'profiles(username, full_name, avatar_url)',
+          )
+          .order('created_at', ascending: false);
+
+      if (!mounted) return;
+      setState(() {
+        allPosts = List<Map<String, dynamic>>.from(response);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not load posts: $e')),
+      );
+    }
+  }
+
+  void _rebuildForMe() {
+    forMePosts = allPosts.where((p) {
+      final uid = p['user_id']?.toString() ?? '';
+      return _followingIds.contains(uid) || uid == _currentUserId();
+    }).toList();
+  }
+
+  String _currentUserId() =>
+      supabase.auth.currentUser?.id ?? '';
+
+  Future<void> _loadUnreadNotificationCount() async {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    try {
+      final response = await supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('is_read', false);
+
+      if (!mounted) return;
+      setState(() => unreadNotificationCount = response.length);
+    } catch (e) {
+      debugPrint('Notification count error: $e');
+    }
+  }
+
+  void _subscribeToPosts() {
+    _postsChannel = supabase
+        .channel('public:posts')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'posts',
+          callback: (payload) async {
+            final newPostId =
+                payload.newRecord['id']?.toString();
+            if (newPostId == null) return;
+
+            if (allPosts.any(
+              (p) => p['id']?.toString() == newPostId,
+            )) {
+              return;
+            }
+
+            try {
+              final full = await supabase
+                  .from('posts')
+                  .select(
+                    'id, user_id, content, image_url, created_at, '
+                    'profiles(username, full_name, avatar_url)',
+                  )
+                  .eq('id', newPostId)
+                  .maybeSingle();
+
+              if (full == null) return;
+              if (!mounted) return;
+
+              final post = Map<String, dynamic>.from(full);
+              setState(() {
+                allPosts.insert(0, post);
+                _rebuildForMe();
+              });
+            } catch (e) {
+              debugPrint('Realtime post fetch error: $e');
+            }
+          },
+        )
+        .subscribe();
+  }
+
+  void _subscribeToNotifications() {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    _notificationsChannel = supabase
+        .channel('public:notifications:${user.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: user.id,
+          ),
+          callback: (payload) {
+            if (!mounted) return;
+            setState(() => unreadNotificationCount++);
+          },
+        )
+        .subscribe();
+  }
+
+  Future<void> refreshFeed() async {
+    await _loadFollowingIds();
+    await _loadPosts();
+    await _loadUnreadNotificationCount();
+    _rebuildForMe();
+    if (!mounted) return;
+    setState(() {});
+  }
+
+  Future<void> openSearch() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const SearchScreen()),
+    );
+    if (!mounted) return;
+    await refreshFeed();
+  }
+
+  Future<void> openNotifications() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => NotificationsScreen(
+          onOpenPost: (postId) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CommentsScreen(postId: postId),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    if (!mounted) return;
+    await _loadUnreadNotificationCount();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visiblePosts = showForYou ? allPosts : forMePosts;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Damadam',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+        actions: [
+          IconButton(
+            tooltip: 'Search',
+            onPressed: openSearch,
+            icon: const Icon(Icons.search),
+          ),
+          Stack(
+            children: [
+              IconButton(
+                tooltip: 'Notifications',
+                onPressed: openNotifications,
+                icon: const Icon(Icons.notifications_outlined),
+              ),
+              if (unreadNotificationCount > 0)
+                Positioned(
+                  right: 5,
+                  top: 5,
+                  child: Container(
+                    constraints: const BoxConstraints(
+                      minWidth: 18,
+                      minHeight: 18,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.red,
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: Colors.white,
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Text(
+                      unreadNotificationCount > 99
+                          ? '99+'
+                          : '$unreadNotificationCount',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Toggle row
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+            child: Row(
+              children: [
+                _toggleButton(
+                  label: 'For You',
+                  active: showForYou,
+                  onTap: () =>
+                      setState(() => showForYou = true),
+                ),
+                const SizedBox(width: 8),
+                _toggleButton(
+                  label: 'For Me',
+                  active: !showForYou,
+                  onTap: () =>
+                      setState(() => showForYou = false),
+                ),
+                const Spacer(),
+                Text(
+                  '${visiblePosts.length}',
+                  style: TextStyle(
+                    color: Colors.grey.shade600,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1),
+
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: refreshFeed,
+              child: loading
+                  ? const Center(
+                      child: CircularProgressIndicator(),
+                    )
+                  : visiblePosts.isEmpty
+                      ? ListView(
+                          physics:
+                              const AlwaysScrollableScrollPhysics(),
+                          children: [
+                            const SizedBox(height: 140),
+                            Icon(
+                              showForYou
+                                  ? Icons.article_outlined
+                                  : Icons.people_outline,
+                              size: 70,
+                              color: Colors.grey.shade400,
+                            ),
+                            const SizedBox(height: 12),
+                            Center(
+                              child: Text(
+                                showForYou
+                                    ? 'No posts yet.\nCreate the first post!'
+                                    : _followingIds.isEmpty
+                                        ? 'Follow people to see their posts here'
+                                        : 'No posts from people you follow yet',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        )
+                      : ListView.builder(
+                          physics:
+                              const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.only(
+                            top: 8,
+                            bottom: 20,
+                          ),
+                          itemCount: visiblePosts.length,
+                          itemBuilder: (context, index) {
+                            final post = visiblePosts[index];
+                            return PostCard(
+                              key: ValueKey(post['id']),
+                              post: post,
+                              onDeleted: refreshFeed,
+                            );
+                          },
+                        ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _toggleButton({
+    required String label,
+    required bool active,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 8,
+        ),
+        decoration: BoxDecoration(
+          color: active
+              ? Theme.of(context).colorScheme.primary
+              : Colors.grey.shade200,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: active ? Colors.white : Colors.black87,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// DM TAB — placeholder (Phase 2)
+// ============================================================
+
+class DMTab extends StatelessWidget {
+  const DMTab({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          '1on1',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+      ),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.chat_bubble_outline,
+                size: 80,
+                color: Colors.grey.shade400,
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                '1on1 Chats',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                'Private messaging is coming soon.\n\n'
+                'You will be able to chat with users\n'
+                'who follow you back.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontSize: 15,
+                  height: 1.5,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// MORE TAB — menu
+// ============================================================
+
+class MoreTab extends StatelessWidget {
+  const MoreTab({super.key});
+
+  void _show(String label, BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$label — coming soon'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Future<void> _logout(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout?'),
+        content: const Text('You will be signed out of Damadam.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      debugPrint('Logout error: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'More',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
+      ),
+      body: ListView(
+        children: [
+          const SizedBox(height: 8),
+
+          _sectionHeader('Discover'),
+          ListTile(
+            leading: const Icon(Icons.groups_outlined),
+            title: const Text('Groups'),
+            subtitle: const Text('Join communities'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+            onTap: () => _show('Groups', context),
+          ),
+          ListTile(
+            leading: const Icon(Icons.star_outline),
+            title: const Text('Recommended for you'),
+            subtitle: const Text('People you may know'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+            onTap: () => _show('Recommended', context),
+          ),
+          ListTile(
+            leading: const Icon(Icons.explore_outlined),
+            title: const Text('Explore'),
+            subtitle: const Text('Trending posts'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+            onTap: () => _show('Explore', context),
+          ),
+
+          const Divider(height: 30),
+
+          _sectionHeader('App'),
+          ListTile(
+            leading: const Icon(Icons.dark_mode_outlined),
+            title: const Text('Dark mode'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+            onTap: () => _show('Dark mode', context),
+          ),
+          ListTile(
+            leading: const Icon(Icons.settings_outlined),
+            title: const Text('Settings'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+            onTap: () => _show('Settings', context),
+          ),
+          ListTile(
+            leading: const Icon(Icons.lock_outline),
+            title: const Text('Privacy'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+            onTap: () => _show('Privacy', context),
+          ),
+
+          const Divider(height: 30),
+
+          _sectionHeader('Account'),
+          ListTile(
+            leading: const Icon(Icons.info_outline),
+            title: const Text('About Damadam'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+            onTap: () => _show('About', context),
+          ),
+          ListTile(
+            leading:
+                const Icon(Icons.logout, color: Colors.red),
+            title: const Text(
+              'Logout',
+              style: TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            onTap: () => _logout(context),
+          ),
+          const SizedBox(height: 30),
+          Center(
+            child: Text(
+              'Damadam v1.0.0',
+              style: TextStyle(
+                color: Colors.grey.shade400,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          const SizedBox(height: 30),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+      child: Text(
+        title.toUpperCase(),
+        style: TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+          color: Colors.grey.shade600,
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// AUTH SCREENS
+// ============================================================
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
@@ -235,7 +940,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
       );
 
       final user = response.user;
-
       if (user == null) {
         showMessage('Account could not be created.');
         return;
@@ -273,9 +977,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
     } catch (e) {
       showMessage('Something went wrong: $e');
     } finally {
-      if (mounted) {
-        setState(() => loading = false);
-      }
+      if (mounted) setState(() => loading = false);
     }
   }
 
@@ -423,9 +1125,7 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       showMessage('Login failed: $e');
     } finally {
-      if (mounted) {
-        setState(() => loading = false);
-      }
+      if (mounted) setState(() => loading = false);
     }
   }
 
@@ -487,7 +1187,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => const ForgotPasswordScreen(),
+                        builder: (_) =>
+                            const ForgotPasswordScreen(),
                       ),
                     );
                   },
@@ -559,9 +1260,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     } catch (e) {
       showMessage('Something went wrong: $e');
     } finally {
-      if (mounted) {
-        setState(() => loading = false);
-      }
+      if (mounted) setState(() => loading = false);
     }
   }
 
@@ -627,354 +1326,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 }
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
-
-  @override
-  State<HomeScreen> createState() => _HomeScreenState();
-}
-
-class _HomeScreenState extends State<HomeScreen> {
-  List<Map<String, dynamic>> posts = [];
-  bool loading = true;
-  int unreadNotificationCount = 0;
-
-  RealtimeChannel? _postsChannel;
-  RealtimeChannel? _notificationsChannel;
-
-  @override
-  void initState() {
-    super.initState();
-    loadPosts();
-    loadUnreadNotificationCount();
-    _subscribeToPosts();
-    _subscribeToNotifications();
-  }
-
-  @override
-  void dispose() {
-    _postsChannel?.unsubscribe();
-    _notificationsChannel?.unsubscribe();
-    super.dispose();
-  }
-
-  void _subscribeToPosts() {
-    _postsChannel = supabase
-        .channel('public:posts')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'posts',
-          callback: (payload) async {
-            final newPostId =
-                payload.newRecord['id']?.toString();
-            if (newPostId == null) return;
-
-            if (posts.any(
-              (p) => p['id']?.toString() == newPostId,
-            )) {
-              return;
-            }
-
-            try {
-              final full = await supabase
-                  .from('posts')
-                  .select(
-                    'id, user_id, content, image_url, created_at, '
-                    'profiles(username, full_name, avatar_url)',
-                  )
-                  .eq('id', newPostId)
-                  .maybeSingle();
-
-              if (full == null) return;
-              if (!mounted) return;
-
-              setState(() {
-                posts.insert(
-                  0,
-                  Map<String, dynamic>.from(full),
-                );
-              });
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('New post added to your feed'),
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            } catch (e) {
-              debugPrint('Realtime post fetch error: $e');
-            }
-          },
-        )
-        .subscribe();
-  }
-
-  void _subscribeToNotifications() {
-    final user = supabase.auth.currentUser;
-    if (user == null) return;
-
-    _notificationsChannel = supabase
-        .channel('public:notifications:${user.id}')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'notifications',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'user_id',
-            value: user.id,
-          ),
-          callback: (payload) {
-            if (!mounted) return;
-            setState(() {
-              unreadNotificationCount++;
-            });
-          },
-        )
-        .subscribe();
-  }
-
-  Future<void> loadUnreadNotificationCount() async {
-    final user = supabase.auth.currentUser;
-    if (user == null) return;
-
-    try {
-      final response = await supabase
-          .from('notifications')
-          .select('id')
-          .eq('user_id', user.id)
-          .eq('is_read', false);
-
-      if (!mounted) return;
-      setState(() {
-        unreadNotificationCount = response.length;
-      });
-    } catch (e) {
-      debugPrint('Notification count error: $e');
-    }
-  }
-
-  Future<void> loadPosts() async {
-    try {
-      final response = await supabase
-          .from('posts')
-          .select(
-            'id, user_id, content, image_url, created_at, '
-            'profiles(username, full_name, avatar_url)',
-          )
-          .order('created_at', ascending: false);
-
-      if (!mounted) return;
-      setState(() {
-        posts = List<Map<String, dynamic>>.from(response);
-        loading = false;
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() => loading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not load posts: $e')),
-      );
-    }
-  }
-
-  Future<void> refreshPosts() async {
-    await loadPosts();
-    await loadUnreadNotificationCount();
-  }
-
-  Future<void> createPost() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const CreatePostScreen()),
-    );
-    if (!mounted) return;
-    await loadPosts();
-  }
-
-  Future<void> openSearch() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const SearchScreen(),
-      ),
-    );
-    if (!mounted) return;
-    await loadPosts();
-  }
-
-  Future<void> logout() async {
-    try {
-      _postsChannel?.unsubscribe();
-      _notificationsChannel?.unsubscribe();
-      await supabase.auth.signOut();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Logout failed: $e')),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Damadam',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        actions: [
-          // ✅ SEARCH
-          IconButton(
-            tooltip: 'Search',
-            onPressed: openSearch,
-            icon: const Icon(Icons.search),
-          ),
-
-          // NOTIFICATIONS
-          Stack(
-            children: [
-              IconButton(
-                tooltip: 'Notifications',
-                onPressed: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => NotificationsScreen(
-                        onOpenPost: (postId) {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => CommentsScreen(
-                                postId: postId,
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  );
-
-                  if (!mounted) return;
-                  await loadUnreadNotificationCount();
-                },
-                icon: const Icon(Icons.notifications_outlined),
-              ),
-              if (unreadNotificationCount > 0)
-                Positioned(
-                  right: 5,
-                  top: 5,
-                  child: Container(
-                    constraints: const BoxConstraints(
-                      minWidth: 18,
-                      minHeight: 18,
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 1,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.red,
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: Colors.white,
-                        width: 1.5,
-                      ),
-                    ),
-                    child: Text(
-                      unreadNotificationCount > 99
-                          ? '99+'
-                          : '$unreadNotificationCount',
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-
-          // PROFILE
-          IconButton(
-            tooltip: 'My Profile',
-            onPressed: () async {
-              await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const ProfileScreen(),
-                ),
-              );
-              if (!mounted) return;
-              await loadPosts();
-            },
-            icon: const Icon(Icons.person_outline),
-          ),
-
-          // CREATE POST
-          IconButton(
-            tooltip: 'Create Post',
-            onPressed: createPost,
-            icon: const Icon(Icons.add_circle_outline),
-          ),
-
-          // LOGOUT
-          IconButton(
-            tooltip: 'Logout',
-            onPressed: logout,
-            icon: const Icon(Icons.logout),
-          ),
-        ],
-      ),
-      body: RefreshIndicator(
-        onRefresh: refreshPosts,
-        child: loading
-            ? const Center(child: CircularProgressIndicator())
-            : posts.isEmpty
-                ? ListView(
-                    physics:
-                        const AlwaysScrollableScrollPhysics(),
-                    children: const [
-                      SizedBox(height: 180),
-                      Center(
-                        child: Text(
-                          'No posts yet.\nCreate the first post!',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 17),
-                        ),
-                      ),
-                    ],
-                  )
-                : ListView.builder(
-                    physics:
-                        const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.only(
-                      top: 8,
-                      bottom: 20,
-                    ),
-                    itemCount: posts.length,
-                    itemBuilder: (context, index) {
-                      final post = posts[index];
-                      return PostCard(
-                        key: ValueKey(post['id']),
-                        post: post,
-                        onDeleted: loadPosts,
-                      );
-                    },
-                  ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: createPost,
-        tooltip: 'Create Post',
-        child: const Icon(Icons.add),
-      ),
-    );
-  }
-}
+// ============================================================
+// CREATE POST SCREEN
+// ============================================================
 
 class CreatePostScreen extends StatefulWidget {
   const CreatePostScreen({super.key});
@@ -1203,6 +1557,10 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
     );
   }
 }
+
+// ============================================================
+// POST CARD
+// ============================================================
 
 class PostCard extends StatefulWidget {
   final Map<String, dynamic> post;
@@ -1619,6 +1977,10 @@ class _PostCardState extends State<PostCard> {
     );
   }
 }
+
+// ============================================================
+// COMMENTS SCREEN
+// ============================================================
 
 class CommentsScreen extends StatefulWidget {
   final String postId;
