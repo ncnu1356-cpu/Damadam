@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/profile_service.dart';
 import '../../services/notification_service.dart';
+import '../../services/dm_service.dart';
+import '../chat_screen.dart';
 import '../follow_list_screen.dart';
 
 class PublicProfileScreen extends StatefulWidget {
@@ -21,8 +23,8 @@ class PublicProfileScreen extends StatefulWidget {
 class _PublicProfileScreenState
     extends State<PublicProfileScreen> {
   final ProfileService _profileService = ProfileService();
-  final SupabaseClient _supabase =
-      Supabase.instance.client;
+  final DmService _dm = DmService();
+  final SupabaseClient _supabase = Supabase.instance.client;
 
   Map<String, dynamic>? profile;
   List<Map<String, dynamic>> posts = [];
@@ -34,6 +36,12 @@ class _PublicProfileScreenState
   bool loading = true;
   bool followLoading = false;
 
+  // DM state
+  Map<String, dynamic>? _conversation;
+  bool _canMessage = false;
+  bool _checkingDm = true;
+  bool _sendingRequest = false;
+
   bool get isOwnProfile =>
       _supabase.auth.currentUser?.id == widget.userId;
 
@@ -41,6 +49,7 @@ class _PublicProfileScreenState
   void initState() {
     super.initState();
     loadProfile();
+    _loadDmState();
   }
 
   Future<void> loadProfile() async {
@@ -85,29 +94,200 @@ class _PublicProfileScreenState
 
       setState(() {
         profile = loadedProfile;
-
-        posts = List<Map<String, dynamic>>.from(
-          postsResponse,
-        );
-
+        posts = List<Map<String, dynamic>>.from(postsResponse);
         followersCount = followersResponse.length;
         followingCount = followingResponse.length;
-
         isFollowing = following;
         loading = false;
       });
+
+      // Recheck DM after following changes
+      await _loadDmState();
     } catch (e) {
       if (!mounted) return;
-
-      setState(() {
-        loading = false;
-      });
-
+      setState(() => loading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to load profile: $e'),
+        SnackBar(content: Text('Failed to load profile: $e')),
+      );
+    }
+  }
+
+  // ============================================================
+  // DM STATE
+  // ============================================================
+  Future<void> _loadDmState() async {
+    if (isOwnProfile) {
+      if (!mounted) return;
+      setState(() => _checkingDm = false);
+      return;
+    }
+
+    try {
+      final conv = await _dm.findConversation(widget.userId);
+      final canMsg = await _dm.canMessage(widget.userId);
+      if (!mounted) return;
+      setState(() {
+        _conversation = conv;
+        _canMessage = canMsg;
+        _checkingDm = false;
+      });
+    } catch (e) {
+      debugPrint('DM state error: $e');
+      if (!mounted) return;
+      setState(() => _checkingDm = false);
+    }
+  }
+
+  Future<void> _sendDmRequest() async {
+    setState(() => _sendingRequest = true);
+    try {
+      await _dm.sendRequest(widget.userId);
+      await _loadDmState();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Request sent — waiting for approval'),
         ),
       );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not send request: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _sendingRequest = false);
+    }
+  }
+
+  Future<void> _acceptAndOpenChat() async {
+    if (_conversation == null) return;
+    setState(() => _sendingRequest = true);
+    try {
+      await _dm.acceptRequest(_conversation!['id'].toString());
+      await _loadDmState();
+      if (!mounted) return;
+      _openChatWithCurrent();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Accept failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _sendingRequest = false);
+    }
+  }
+
+  Map<String, dynamic> _prepareConversation(
+    Map<String, dynamic> conv,
+  ) {
+    final me = _supabase.auth.currentUser?.id;
+    if (me == null) return conv;
+
+    final result = Map<String, dynamic>.from(conv);
+
+    // Inject the other user's profile so ChatScreen can display it
+    if (conv['requester_id']?.toString() == me) {
+      result['recipient'] = profile;
+    } else {
+      result['requester'] = profile;
+    }
+    return result;
+  }
+
+  void _openChatWithCurrent() {
+    if (_conversation == null) return;
+    final conv = _prepareConversation(_conversation!);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(conversation: conv),
+      ),
+    ).then((_) => _loadDmState());
+  }
+
+  // ============================================================
+  // FOLLOW
+  // ============================================================
+  Future<void> _sendFollowNotification() async {
+    final currentUser = _supabase.auth.currentUser;
+    if (currentUser == null ||
+        currentUser.id == widget.userId) {
+      return;
+    }
+
+    try {
+      final senderProfile = await _supabase
+          .from('profiles')
+          .select('username, full_name')
+          .eq('id', currentUser.id)
+          .maybeSingle();
+
+      final username =
+          senderProfile?['username']?.toString().trim() ?? '';
+      final fullName =
+          senderProfile?['full_name']?.toString().trim() ?? '';
+
+      final displayName = fullName.isNotEmpty
+          ? fullName
+          : (username.isNotEmpty ? username : 'Someone');
+
+      await NotificationService().createNotification(
+        userId: widget.userId,
+        senderId: currentUser.id,
+        type: 'follow',
+        message: '$displayName started following you',
+      );
+    } catch (e) {
+      debugPrint('Follow notification error: $e');
+    }
+  }
+
+  Future<void> toggleFollow() async {
+    final currentUser = _supabase.auth.currentUser;
+    if (currentUser == null) return;
+    if (isOwnProfile || followLoading) return;
+
+    setState(() => followLoading = true);
+
+    try {
+      if (isFollowing) {
+        await _supabase
+            .from('follows')
+            .delete()
+            .eq('follower_id', currentUser.id)
+            .eq('following_id', widget.userId);
+
+        if (!mounted) return;
+        setState(() {
+          isFollowing = false;
+          if (followersCount > 0) followersCount--;
+        });
+      } else {
+        await _supabase.from('follows').insert({
+          'follower_id': currentUser.id,
+          'following_id': widget.userId,
+        });
+
+        if (!mounted) return;
+        setState(() {
+          isFollowing = true;
+          followersCount++;
+        });
+
+        await _sendFollowNotification();
+      }
+
+      // Reload DM eligibility after follow changes
+      await _loadDmState();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not update follow status: $e'),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => followLoading = false);
     }
   }
 
@@ -123,108 +303,7 @@ class _PublicProfileScreenState
         ),
       ),
     );
-
-    // Reload counts when user returns
     await loadProfile();
-  }
-
-  Future<void> _sendFollowNotification() async {
-    final currentUser = _supabase.auth.currentUser;
-
-    if (currentUser == null ||
-        currentUser.id == widget.userId) {
-      return;
-    }
-
-    try {
-      final senderProfile = await _supabase
-          .from('profiles')
-          .select('username, full_name')
-          .eq('id', currentUser.id)
-          .maybeSingle();
-
-      final username =
-          senderProfile?['username']?.toString().trim() ?? '';
-
-      final fullName =
-          senderProfile?['full_name']?.toString().trim() ?? '';
-
-      final displayName = fullName.isNotEmpty
-          ? fullName
-          : (username.isNotEmpty ? username : 'Someone');
-
-      await NotificationService().createNotification(
-        userId: widget.userId,
-        senderId: currentUser.id,
-        type: 'follow',
-        message: '$displayName started following you',
-      );
-    } catch (e) {
-      debugPrint(
-        'Follow notification error: $e',
-      );
-    }
-  }
-
-  Future<void> toggleFollow() async {
-    final currentUser = _supabase.auth.currentUser;
-
-    if (currentUser == null) return;
-    if (isOwnProfile || followLoading) return;
-
-    setState(() {
-      followLoading = true;
-    });
-
-    try {
-      if (isFollowing) {
-        await _supabase
-            .from('follows')
-            .delete()
-            .eq('follower_id', currentUser.id)
-            .eq('following_id', widget.userId);
-
-        if (!mounted) return;
-
-        setState(() {
-          isFollowing = false;
-
-          if (followersCount > 0) {
-            followersCount--;
-          }
-        });
-      } else {
-        await _supabase.from('follows').insert({
-          'follower_id': currentUser.id,
-          'following_id': widget.userId,
-        });
-
-        if (!mounted) return;
-
-        setState(() {
-          isFollowing = true;
-          followersCount++;
-        });
-
-        await _sendFollowNotification();
-      }
-    } catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Could not update follow status: $e',
-          ),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          followLoading = false;
-        });
-      }
-    }
   }
 
   String getString(dynamic value) {
@@ -245,15 +324,14 @@ class _PublicProfileScreenState
         centerTitle: true,
       ),
       body: loading
-          ? const Center(
-              child: CircularProgressIndicator(),
-            )
+          ? const Center(child: CircularProgressIndicator())
           : profile == null
-              ? const Center(
-                  child: Text('Profile not found'),
-                )
+              ? const Center(child: Text('Profile not found'))
               : RefreshIndicator(
-                  onRefresh: loadProfile,
+                  onRefresh: () async {
+                    await loadProfile();
+                    await _loadDmState();
+                  },
                   child: ListView(
                     physics:
                         const AlwaysScrollableScrollPhysics(),
@@ -268,20 +346,11 @@ class _PublicProfileScreenState
   }
 
   Widget _buildProfileHeader() {
-    final username =
-        getString(profile?['username']);
-
-    final fullName =
-        getString(profile?['full_name']);
-
-    final bio =
-        getString(profile?['bio']);
-
-    final avatarUrl =
-        getString(profile?['avatar_url']);
-
-    final coverUrl =
-        getString(profile?['cover_url']);
+    final username = getString(profile?['username']);
+    final fullName = getString(profile?['full_name']);
+    final bio = getString(profile?['bio']);
+    final avatarUrl = getString(profile?['avatar_url']);
+    final coverUrl = getString(profile?['cover_url']);
 
     return Column(
       children: [
@@ -323,12 +392,10 @@ class _PublicProfileScreenState
                   ),
                   child: CircleAvatar(
                     radius: 55,
-                    backgroundColor:
-                        Colors.grey.shade300,
-                    backgroundImage:
-                        avatarUrl.isNotEmpty
-                            ? NetworkImage(avatarUrl)
-                            : null,
+                    backgroundColor: Colors.grey.shade300,
+                    backgroundImage: avatarUrl.isNotEmpty
+                        ? NetworkImage(avatarUrl)
+                        : null,
                     child: avatarUrl.isEmpty
                         ? const Icon(
                             Icons.person,
@@ -343,16 +410,12 @@ class _PublicProfileScreenState
           ),
         ),
         Padding(
-          padding:
-              const EdgeInsets.fromLTRB(20, 0, 20, 15),
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 15),
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                fullName.isNotEmpty
-                    ? fullName
-                    : username,
+                fullName.isNotEmpty ? fullName : username,
                 style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
@@ -370,22 +433,13 @@ class _PublicProfileScreenState
                 const SizedBox(height: 8),
                 Text(
                   bio,
-                  style: const TextStyle(
-                    fontSize: 15,
-                  ),
+                  style: const TextStyle(fontSize: 15),
                 ),
               ],
               const SizedBox(height: 18),
-
-              // =========================================
-              // STATS — now tappable
-              // =========================================
               Row(
                 children: [
-                  _statItem(
-                    posts.length.toString(),
-                    'Posts',
-                  ),
+                  _statItem(posts.length.toString(), 'Posts'),
                   const SizedBox(width: 28),
                   _statItem(
                     followersCount.toString(),
@@ -402,44 +456,50 @@ class _PublicProfileScreenState
                   ),
                 ],
               ),
-
               if (!isOwnProfile) ...[
                 const SizedBox(height: 18),
-                SizedBox(
-                  width: double.infinity,
-                  height: 45,
-                  child: ElevatedButton(
-                    onPressed:
-                        followLoading
-                            ? null
-                            : toggleFollow,
-                    style: ElevatedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(10),
-                      ),
-                    ),
-                    child: followLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child:
-                                CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : Text(
-                            isFollowing
-                                ? 'Following'
-                                : 'Follow',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight:
-                                  FontWeight.bold,
+                Row(
+                  children: [
+                    Expanded(
+                      child: SizedBox(
+                        height: 45,
+                        child: ElevatedButton(
+                          onPressed: followLoading
+                              ? null
+                              : toggleFollow,
+                          style: ElevatedButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius.circular(10),
                             ),
                           ),
-                  ),
+                          child: followLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child:
+                                      CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : Text(
+                                  isFollowing
+                                      ? 'Following'
+                                      : 'Follow',
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ),
+                    if (_shouldShowDmButton()) ...[
+                      const SizedBox(width: 10),
+                      Expanded(child: _buildDmButton()),
+                    ],
+                  ],
                 ),
               ],
             ],
@@ -447,6 +507,131 @@ class _PublicProfileScreenState
         ),
       ],
     );
+  }
+
+  bool _shouldShowDmButton() {
+    if (_checkingDm) return false;
+    if (_conversation != null) return true;
+    return _canMessage;
+  }
+
+  Widget _buildDmButton() {
+    final me = _supabase.auth.currentUser?.id;
+
+    // No conversation yet, but mutual follow → Send request
+    if (_conversation == null) {
+      if (!_canMessage) return const SizedBox.shrink();
+
+      return SizedBox(
+        height: 45,
+        child: OutlinedButton.icon(
+          onPressed: _sendingRequest ? null : _sendDmRequest,
+          icon: _sendingRequest
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.chat_bubble_outline, size: 18),
+          label: const Text(
+            '1on1',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          style: OutlinedButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        ),
+      );
+    }
+
+    final status = _conversation!['status']?.toString();
+    final requesterId = _conversation!['requester_id']?.toString();
+    final isRequester = requesterId == me;
+
+    // Pending — sent by me
+    if (status == 'pending' && isRequester) {
+      return SizedBox(
+        height: 45,
+        child: OutlinedButton.icon(
+          onPressed: null,
+          icon: const Icon(Icons.schedule, size: 18),
+          label: const Text(
+            'Pending',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          style: OutlinedButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Pending — received (accept inline)
+    if (status == 'pending' && !isRequester) {
+      return SizedBox(
+        height: 45,
+        child: ElevatedButton.icon(
+          onPressed: _sendingRequest ? null : _acceptAndOpenChat,
+          icon: _sendingRequest
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
+                )
+              : const Icon(Icons.check, size: 18),
+          label: const Text(
+            'Accept chat',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          style: ElevatedButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Accepted — open chat
+    if (status == 'accepted') {
+      return SizedBox(
+        height: 45,
+        child: ElevatedButton.icon(
+          onPressed: _openChatWithCurrent,
+          icon: const Icon(Icons.chat_bubble, size: 18),
+          label: const Text(
+            'Message',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          style: ElevatedButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return const SizedBox.shrink();
   }
 
   Widget _statItem(
@@ -497,10 +682,7 @@ class _PublicProfileScreenState
         child: const Center(
           child: Text(
             'No posts yet',
-            style: TextStyle(
-              fontSize: 16,
-              color: Colors.grey,
-            ),
+            style: TextStyle(fontSize: 16, color: Colors.grey),
           ),
         ),
       );
@@ -517,15 +699,12 @@ class _PublicProfileScreenState
 class _PublicPostCard extends StatelessWidget {
   final Map<String, dynamic> post;
 
-  const _PublicPostCard({
-    required this.post,
-  });
+  const _PublicPostCard({required this.post});
 
   String _timeAgo(String? iso) {
     if (iso == null) return '';
     final dt = DateTime.tryParse(iso)?.toLocal();
     if (dt == null) return '';
-
     final diff = DateTime.now().difference(dt);
     if (diff.inSeconds < 60) return 'just now';
     if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
@@ -536,58 +715,38 @@ class _PublicPostCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final content =
-        post['content']?.toString() ?? '';
-
-    final imageUrl =
-        post['image_url']?.toString() ?? '';
-
-    final createdAt =
-        post['created_at']?.toString();
+    final content = post['content']?.toString() ?? '';
+    final imageUrl = post['image_url']?.toString() ?? '';
+    final createdAt = post['created_at']?.toString();
 
     return Card(
-      margin: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 5,
-      ),
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       elevation: 1,
       child: Padding(
         padding: const EdgeInsets.all(12),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (content.isNotEmpty)
-              Text(
-                content,
-                style: const TextStyle(
-                  fontSize: 16,
-                ),
-              ),
+              Text(content, style: const TextStyle(fontSize: 16)),
             if (imageUrl.isNotEmpty) ...[
               const SizedBox(height: 10),
               ClipRRect(
-                borderRadius:
-                    BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(10),
                 child: Image.network(
                   imageUrl,
                   width: double.infinity,
                   fit: BoxFit.cover,
-                  errorBuilder:
-                      (_, __, ___) =>
-                          const SizedBox(
+                  errorBuilder: (_, __, ___) => const SizedBox(
                     height: 150,
                     child: Center(
-                      child: Icon(
-                        Icons.broken_image,
-                      ),
+                      child: Icon(Icons.broken_image),
                     ),
                   ),
                 ),
               ),
             ],
-            if (createdAt != null &&
-                createdAt.isNotEmpty) ...[
+            if (createdAt != null && createdAt.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(
                 _timeAgo(createdAt),
