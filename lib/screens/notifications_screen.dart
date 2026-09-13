@@ -166,7 +166,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  // ✅ UPDATED: added 'reply'
+  // ✅ Icon mapping (with dm_request)
   IconData notificationIcon(String? type) {
     switch (type) {
       case 'follow':
@@ -177,6 +177,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return Icons.comment;
       case 'reply':
         return Icons.reply;
+      case 'dm_request':
+        return Icons.chat_bubble;
       case 'mention':
         return Icons.alternate_email;
       default:
@@ -184,7 +186,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
-  // ✅ UPDATED: added 'reply'
+  // ✅ Color mapping (with dm_request)
   Color notificationColor(String? type) {
     switch (type) {
       case 'follow':
@@ -195,6 +197,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return Colors.green;
       case 'reply':
         return Colors.teal;
+      case 'dm_request':
+        return Colors.indigo;
       default:
         return Colors.deepPurple;
     }
@@ -332,13 +336,19 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               markAsRead(notification);
                             }
 
-                            final postId = notification['post_id']
-                                ?.toString();
+                            // Only open posts for post-related notifications
+                            if (type == 'like' ||
+                                type == 'comment' ||
+                                type == 'reply' ||
+                                type == 'mention') {
+                              final postId = notification['post_id']
+                                  ?.toString();
 
-                            if (postId != null &&
-                                postId.isNotEmpty &&
-                                widget.onOpenPost != null) {
-                              widget.onOpenPost!(postId);
+                              if (postId != null &&
+                                  postId.isNotEmpty &&
+                                  widget.onOpenPost != null) {
+                                widget.onOpenPost!(postId);
+                              }
                             }
                           },
                           child: Container(
