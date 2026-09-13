@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'screens/notifications_screen.dart';
 import 'screens/search_screen.dart';
+import 'screens/dm_tab.dart';
 import 'screens/profile/profile_screen.dart';
 import 'screens/profile/public_profile_screen.dart';
 import 'services/notification_service.dart';
@@ -81,7 +82,7 @@ class _MainShellState extends State<MainShell> {
 
   final _pages = const [
     HomeTab(),
-    DMTab(),
+    DmTab(),
     ProfileScreen(),
     MoreTab(),
   ];
@@ -105,8 +106,7 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
-    // Map our state index to visible bottom nav item index
-    // 0 → Home(0), 1 → DM(1), 2 → Profile(3), 3 → More(4)
+    // Map state index to visible bottom nav item index
     final navIndex = _index < 2 ? _index : _index + 1;
 
     return Scaffold(
@@ -243,7 +243,8 @@ class _HomeTabState extends State<HomeTab> {
   void _rebuildForMe() {
     forMePosts = allPosts.where((p) {
       final uid = p['user_id']?.toString() ?? '';
-      return _followingIds.contains(uid) || uid == _currentUserId();
+      return _followingIds.contains(uid) ||
+          uid == _currentUserId();
     }).toList();
   }
 
@@ -552,61 +553,6 @@ class _HomeTabState extends State<HomeTab> {
           style: TextStyle(
             fontWeight: FontWeight.w600,
             color: active ? Colors.white : Colors.black87,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ============================================================
-// DM TAB — placeholder (Phase 2)
-// ============================================================
-
-class DMTab extends StatelessWidget {
-  const DMTab({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          '1on1',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.chat_bubble_outline,
-                size: 80,
-                color: Colors.grey.shade400,
-              ),
-              const SizedBox(height: 20),
-              const Text(
-                '1on1 Chats',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'Private messaging is coming soon.\n\n'
-                'You will be able to chat with users\n'
-                'who follow you back.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.grey.shade600,
-                  fontSize: 15,
-                  height: 1.5,
-                ),
-              ),
-            ],
           ),
         ),
       ),
