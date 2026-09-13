@@ -171,14 +171,14 @@ class _DmTabState extends State<DmTab> {
     );
   }
 
-  // Returns the "other" user's profile from a conversation row
+  // ✅ FIX 1: Explicit Map<String, dynamic> return + empty map typed
   Map<String, dynamic> _otherUser(Map<String, dynamic> conv) {
     final isRequester = conv['requester_id']?.toString() == _me;
     final other = isRequester
         ? conv['recipient']
         : conv['requester'];
     if (other is Map<String, dynamic>) return other;
-    return {};
+    return <String, dynamic>{};
   }
 
   String _displayName(Map<String, dynamic> user) {
@@ -298,7 +298,12 @@ class _DmTabState extends State<DmTab> {
 
   Widget _requestCard(Map<String, dynamic> req) {
     final profile = req['profiles'];
-    final user = profile is Map<String, dynamic> ? profile : {};
+
+    // ✅ FIX 2: Explicit Map<String, dynamic> type + typed empty map
+    final Map<String, dynamic> user = profile is Map<String, dynamic>
+        ? profile
+        : <String, dynamic>{};
+
     final avatarUrl = user['avatar_url']?.toString() ?? '';
 
     return Container(
@@ -346,13 +351,11 @@ class _DmTabState extends State<DmTab> {
               ],
             ),
           ),
-          // Decline
           IconButton(
             tooltip: 'Decline',
             onPressed: () => _decline(req),
             icon: const Icon(Icons.close, color: Colors.red),
           ),
-          // Accept
           FilledButton(
             onPressed: () => _accept(req),
             style: FilledButton.styleFrom(
