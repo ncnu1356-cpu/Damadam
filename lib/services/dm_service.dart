@@ -10,10 +10,6 @@ class DmService {
 
   String? get currentUserId => _supabase.auth.currentUser?.id;
 
-  // ============================================================
-  // REQUESTS
-  // ============================================================
-
   Future<bool> canMessage(String otherUserId) async {
     final me = currentUserId;
     if (me == null || me == otherUserId) return false;
@@ -80,7 +76,6 @@ class DmService {
         .select()
         .maybeSingle();
 
-    // Send a notification to the recipient
     if (res != null) {
       await _sendRequestNotification(otherUserId);
     }
@@ -120,9 +115,13 @@ class DmService {
         'message': '$displayName sent you a 1on1 request',
         'is_read': false,
       });
+
+      if (kDebugMode) {
+        debugPrint('✅ DM request notification sent');
+      }
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('DM request notification failed: $e');
+        debugPrint('❌ DM request notification failed: $e');
       }
     }
   }
@@ -131,20 +130,44 @@ class DmService {
     final me = currentUserId;
     if (me == null) return [];
 
-    final res = await _supabase
-        .from('dm_conversations')
-        .select(
-          'id, requester_id, recipient_id, status, created_at, '
-          'profiles!dm_conversations_requester_id_fkey(id, username, full_name, avatar_url)',
-        )
-        .eq('recipient_id', me)
-        .eq('status', 'pending')
-        .order('created_at', ascending: false);
+    try {
+      final res = await _supabase
+          .from('dm_conversations')
+          .select('id, requester_id, recipient_id, status, created_at')
+          .eq('recipient_id', me)
+          .eq('status', 'pending')
+          .order('created_at', ascending: false);
 
-    return List<Map<String, dynamic>>.from(res);
+      final list = List<Map<String, dynamic>>.from(res);
+      if (list.isEmpty) return list;
+
+      final ids = list
+          .map((c) => c['requester_id']?.toString() ?? '')
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList();
+
+      final profilesRes = await _supabase
+          .from('profiles')
+          .select('id, username, full_name, avatar_url')
+          .inFilter('id', ids);
+
+      final profilesMap = <String, Map<String, dynamic>>{};
+      for (final p in List<Map<String, dynamic>>.from(profilesRes)) {
+        profilesMap[p['id'].toString()] = p;
+      }
+
+      for (final c in list) {
+        c['profiles'] = profilesMap[c['requester_id']?.toString()];
+      }
+
+      return list;
+    } catch (e) {
+      debugPrint('getIncomingRequests error: $e');
+      return [];
+    }
   }
 
-  // ✅ Uses SECURITY DEFINER function (bypasses RLS safely)
   Future<void> acceptRequest(String conversationId) async {
     await _supabase.rpc(
       'accept_dm_request',
@@ -152,7 +175,6 @@ class DmService {
     );
   }
 
-  // ✅ Uses SECURITY DEFINER function
   Future<void> declineRequest(String conversationId) async {
     await _supabase.rpc(
       'decline_dm_request',
@@ -160,26 +182,48 @@ class DmService {
     );
   }
 
-  // ============================================================
-  // CONVERSATIONS
-  // ============================================================
-
   Future<List<Map<String, dynamic>>> getAcceptedConversations() async {
     final me = currentUserId;
     if (me == null) return [];
 
-    final res = await _supabase
-        .from('dm_conversations')
-        .select(
-          'id, requester_id, recipient_id, status, accepted_at, '
-          'requester:profiles!dm_conversations_requester_id_fkey(id, username, full_name, avatar_url), '
-          'recipient:profiles!dm_conversations_recipient_id_fkey(id, username, full_name, avatar_url)',
-        )
-        .or('requester_id.eq.$me,recipient_id.eq.$me')
-        .eq('status', 'accepted')
-        .order('accepted_at', ascending: false);
+    try {
+      final res = await _supabase
+          .from('dm_conversations')
+          .select('id, requester_id, recipient_id, status, accepted_at')
+          .or('requester_id.eq.$me,recipient_id.eq.$me')
+          .eq('status', 'accepted')
+          .order('accepted_at', ascending: false);
 
-    return List<Map<String, dynamic>>.from(res);
+      final list = List<Map<String, dynamic>>.from(res);
+      if (list.isEmpty) return list;
+
+      final ids = <String>{};
+      for (final c in list) {
+        ids.add(c['requester_id']?.toString() ?? '');
+        ids.add(c['recipient_id']?.toString() ?? '');
+      }
+      ids.removeWhere((id) => id.isEmpty);
+
+      final profilesRes = await _supabase
+          .from('profiles')
+          .select('id, username, full_name, avatar_url')
+          .inFilter('id', ids.toList());
+
+      final profilesMap = <String, Map<String, dynamic>>{};
+      for (final p in List<Map<String, dynamic>>.from(profilesRes)) {
+        profilesMap[p['id'].toString()] = p;
+      }
+
+      for (final c in list) {
+        c['requester'] = profilesMap[c['requester_id']?.toString()];
+        c['recipient'] = profilesMap[c['recipient_id']?.toString()];
+      }
+
+      return list;
+    } catch (e) {
+      debugPrint('getAcceptedConversations error: $e');
+      return [];
+    }
   }
 
   Future<Map<String, dynamic>?> getLastMessage(
@@ -200,10 +244,6 @@ class DmService {
     }
   }
 
-  // ============================================================
-  // MESSAGES
-  // ============================================================
-
   Future<List<Map<String, dynamic>>> getMessages(
     String conversationId,
   ) async {
@@ -216,7 +256,6 @@ class DmService {
     return List<Map<String, dynamic>>.from(res);
   }
 
-  // ✅ Uses RPC to bypass RLS
   Future<void> sendText({
     required String conversationId,
     required String text,
@@ -255,7 +294,6 @@ class DmService {
         .getPublicUrl(path);
   }
 
-  // ✅ Uses RPC to bypass RLS
   Future<void> sendImage({
     required String conversationId,
     required String imageUrl,
