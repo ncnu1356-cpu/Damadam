@@ -107,7 +107,7 @@ class _MainShellState extends State<MainShell> {
   int _dmUnreadCount = 0;
 
   RealtimeChannel? _dmBadgeChannel;
-  RealtimeChannel? _dmRequestChannel; // ✅ NEW
+  RealtimeChannel? _dmRequestChannel;
 
   final _pages = const [
     HomeTab(),
@@ -119,14 +119,35 @@ class _MainShellState extends State<MainShell> {
   @override
   void initState() {
     super.initState();
+    _loadInitialDmBadge(); // ✅ NEW
     _subscribeDmBadge();
   }
 
   @override
   void dispose() {
     _dmBadgeChannel?.unsubscribe();
-    _dmRequestChannel?.unsubscribe(); // ✅ NEW
+    _dmRequestChannel?.unsubscribe();
     super.dispose();
+  }
+
+  // ✅ NEW: Load pending count when app starts
+  Future<void> _loadInitialDmBadge() async {
+    final me = supabase.auth.currentUser?.id;
+    if (me == null) return;
+
+    try {
+      // Pending incoming requests
+      final reqRes = await supabase
+          .from('dm_conversations')
+          .select('id')
+          .eq('recipient_id', me)
+          .eq('status', 'pending');
+
+      if (!mounted) return;
+      setState(() => _dmUnreadCount = reqRes.length);
+    } catch (e) {
+      debugPrint('Initial DM badge error: $e');
+    }
   }
 
   // ✅ Listens for new DM messages AND new DM requests
@@ -170,18 +191,23 @@ class _MainShellState extends State<MainShell> {
         .subscribe();
 
     // ✅ Channel 2: new REQUESTS where I'm the recipient
+    // Filter removed — check manually inside callback
     _dmRequestChannel = supabase
         .channel('dm:requests:badge:$me')
         .onPostgresChanges(
           event: PostgresChangeEvent.insert,
           schema: 'public',
           table: 'dm_conversations',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'recipient_id',
-            value: me,
-          ),
-          callback: (_) {
+          callback: (payload) {
+            final recipientId =
+                payload.newRecord['recipient_id']?.toString();
+            final requesterId =
+                payload.newRecord['requester_id']?.toString();
+
+            // Only count if I'm the recipient and not the sender
+            if (recipientId != me) return;
+            if (requesterId == me) return;
+
             if (!mounted) return;
             if (_index != 1) {
               setState(() => _dmUnreadCount++);
