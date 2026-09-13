@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class DmService {
@@ -198,7 +200,7 @@ class DmService {
 
     await _supabase.storage.from('post-images').uploadBinary(
           path,
-          bytes is List<int> ? _u8(bytes) : bytes,
+          Uint8List.fromList(bytes),
           fileOptions: FileOptions(
             upsert: false,
             contentType: 'image/$extension',
