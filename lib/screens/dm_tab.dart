@@ -22,6 +22,7 @@ class _DmTabState extends State<DmTab> {
 
   RealtimeChannel? _requestsChannel;
   RealtimeChannel? _conversationsChannel;
+  RealtimeChannel? _messagesChannel;
 
   String get _me => _supabase.auth.currentUser?.id ?? '';
 
@@ -36,6 +37,7 @@ class _DmTabState extends State<DmTab> {
   void dispose() {
     _requestsChannel?.unsubscribe();
     _conversationsChannel?.unsubscribe();
+    _messagesChannel?.unsubscribe();
     super.dispose();
   }
 
@@ -68,6 +70,7 @@ class _DmTabState extends State<DmTab> {
   void _subscribeRealtime() {
     if (_me.isEmpty) return;
 
+    // Watch for any request/conversation change involving me
     _requestsChannel = _supabase
         .channel('dm:requests:$_me')
         .onPostgresChanges(
@@ -97,12 +100,34 @@ class _DmTabState extends State<DmTab> {
           callback: (_) => _loadAll(),
         )
         .subscribe();
+
+    // Watch for new messages in any of my conversations
+    // (fallback refresh — the ChatScreen subscribes in detail)
+    _messagesChannel = _supabase
+        .channel('dm:messages:$_me')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'dm_messages',
+          callback: (payload) {
+            final convId = payload.newRecord['conversation_id']?.toString();
+            if (convId == null) return;
+            if (conversations.any((c) => c['id']?.toString() == convId)) {
+              if (mounted) setState(() {});
+            }
+          },
+        )
+        .subscribe();
   }
 
   Future<void> _accept(Map<String, dynamic> req) async {
     try {
       await _dm.acceptRequest(req['id'].toString());
       await _loadAll();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chat accepted')),
+      );
     } catch (e) {
       _show('Accept failed: $e');
     }
@@ -128,13 +153,15 @@ class _DmTabState extends State<DmTab> {
     await _loadAll();
   }
 
-  Future<void> _deleteConversation(
-    Map<String, dynamic> conv,
-  ) async {
+  // ✅ Leave / delete the conversation
+  Future<void> _deleteConversation(Map<String, dynamic> conv) async {
+    final other = _otherUser(conv);
+    final name = _displayName(other);
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete conversation?'),
+        title: Text('Leave chat with $name?'),
         content: const Text(
           'All messages in this chat will be permanently deleted for both of you.',
         ),
@@ -144,11 +171,9 @@ class _DmTabState extends State<DmTab> {
             child: const Text('Cancel'),
           ),
           FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
+            child: const Text('Leave'),
           ),
         ],
       ),
@@ -159,6 +184,10 @@ class _DmTabState extends State<DmTab> {
     try {
       await _dm.deleteConversation(conv['id'].toString());
       await _loadAll();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Chat removed')),
+      );
     } catch (e) {
       _show('Delete failed: $e');
     }
@@ -171,12 +200,9 @@ class _DmTabState extends State<DmTab> {
     );
   }
 
-  // ✅ FIX 1: Explicit Map<String, dynamic> return + empty map typed
   Map<String, dynamic> _otherUser(Map<String, dynamic> conv) {
     final isRequester = conv['requester_id']?.toString() == _me;
-    final other = isRequester
-        ? conv['recipient']
-        : conv['requester'];
+    final other = isRequester ? conv['recipient'] : conv['requester'];
     if (other is Map<String, dynamic>) return other;
     return <String, dynamic>{};
   }
@@ -189,16 +215,18 @@ class _DmTabState extends State<DmTab> {
     return 'Damadam User';
   }
 
+  // ✅ FIX 4: proper "1m ago" time format
   String _timeAgo(String? iso) {
     if (iso == null) return '';
     final dt = DateTime.tryParse(iso)?.toLocal();
     if (dt == null) return '';
     final diff = DateTime.now().difference(dt);
-    if (diff.inSeconds < 60) return 'now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
-    if (diff.inHours < 24) return '${diff.inHours}h';
-    if (diff.inDays < 7) return '${diff.inDays}d';
-    return '${dt.day}/${dt.month}';
+    if (diff.inSeconds < 60) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    if (diff.inDays < 30) return '${(diff.inDays / 7).floor()}w ago';
+    return '${dt.day}/${dt.month}/${dt.year}';
   }
 
   @override
@@ -214,6 +242,13 @@ class _DmTabState extends State<DmTab> {
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0,
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: _loadAll,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _loadAll,
@@ -225,19 +260,14 @@ class _DmTabState extends State<DmTab> {
   }
 
   Widget _buildBody() {
-    final hasAny =
-        requests.isNotEmpty || conversations.isNotEmpty;
+    final hasAny = requests.isNotEmpty || conversations.isNotEmpty;
 
     if (!hasAny) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: const [
           SizedBox(height: 140),
-          Icon(
-            Icons.chat_bubble_outline,
-            size: 80,
-            color: Colors.grey,
-          ),
+          Icon(Icons.chat_bubble_outline, size: 80, color: Colors.grey),
           SizedBox(height: 16),
           Center(
             child: Text(
@@ -254,7 +284,7 @@ class _DmTabState extends State<DmTab> {
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: 40),
               child: Text(
-                'Follow someone who follows you back,\nthen tap "Send 1on1 request" on their profile.',
+                'Follow someone who follows you back,\nthen tap the 1on1 button on their profile.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.grey, height: 1.5),
               ),
@@ -268,12 +298,12 @@ class _DmTabState extends State<DmTab> {
       physics: const AlwaysScrollableScrollPhysics(),
       children: [
         if (requests.isNotEmpty) ...[
-          _sectionHeader('Requests'),
+          _sectionHeader('Requests (${requests.length})'),
           ...requests.map(_requestCard),
           const SizedBox(height: 8),
         ],
         if (conversations.isNotEmpty) ...[
-          _sectionHeader('Chats'),
+          _sectionHeader('Chats (${conversations.length})'),
           ...conversations.map(_conversationTile),
         ],
         const SizedBox(height: 30),
@@ -298,19 +328,12 @@ class _DmTabState extends State<DmTab> {
 
   Widget _requestCard(Map<String, dynamic> req) {
     final profile = req['profiles'];
-
-    // ✅ FIX 2: Explicit Map<String, dynamic> type + typed empty map
-    final Map<String, dynamic> user = profile is Map<String, dynamic>
-        ? profile
-        : <String, dynamic>{};
-
+    final Map<String, dynamic> user =
+        profile is Map<String, dynamic> ? profile : <String, dynamic>{};
     final avatarUrl = user['avatar_url']?.toString() ?? '';
 
     return Container(
-      margin: const EdgeInsets.symmetric(
-        horizontal: 12,
-        vertical: 4,
-      ),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -322,8 +345,7 @@ class _DmTabState extends State<DmTab> {
           CircleAvatar(
             radius: 26,
             backgroundColor: Colors.blueGrey.shade100,
-            backgroundImage:
-                avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+            backgroundImage: avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
             child: avatarUrl.isEmpty
                 ? const Icon(Icons.person, color: Colors.white)
                 : null,
@@ -335,18 +357,12 @@ class _DmTabState extends State<DmTab> {
               children: [
                 Text(
                   _displayName(user),
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'wants to chat with you',
-                  style: TextStyle(
-                    color: Colors.grey.shade600,
-                    fontSize: 13,
-                  ),
+                  'wants to chat',
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
                 ),
               ],
             ),
@@ -396,26 +412,17 @@ class _DmTabState extends State<DmTab> {
             ),
             title: Text(
               _displayName(other),
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 15,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
             ),
             subtitle: Text(
               preview,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                fontSize: 13,
-              ),
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
             ),
             trailing: Text(
               _timeAgo(last?['created_at']?.toString()),
-              style: TextStyle(
-                color: Colors.grey.shade500,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
             ),
             onTap: () => _openChat(conv),
             onLongPress: () => _deleteConversation(conv),
@@ -427,14 +434,10 @@ class _DmTabState extends State<DmTab> {
 
   String _preview(Map<String, dynamic>? last) {
     if (last == null) return 'Say hi 👋';
-    if (last['deleted_at'] != null) {
-      return 'This message was deleted';
-    }
+    if (last['deleted_at'] != null) return 'This message was deleted';
     final content = last['content']?.toString().trim() ?? '';
     if (content.isNotEmpty) return content;
-    if ((last['image_url']?.toString() ?? '').isNotEmpty) {
-      return '📷 Photo';
-    }
+    if ((last['image_url']?.toString() ?? '').isNotEmpty) return '📷 Photo';
     return 'Say hi 👋';
   }
 }
