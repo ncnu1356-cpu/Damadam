@@ -1,9 +1,13 @@
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class NotificationsScreen extends StatefulWidget {
-  const NotificationsScreen({super.key});
+  final void Function(String postId)? onOpenPost;
+
+  const NotificationsScreen({
+    super.key,
+    this.onOpenPost,
+  });
 
   @override
   State<NotificationsScreen> createState() =>
@@ -89,31 +93,79 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to mark notifications as read: $e'),
+          content:
+              Text('Failed to mark notifications as read: $e'),
         ),
       );
     }
   }
 
+  Future<void> clearAll() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear all notifications?'),
+        content: const Text(
+          'This will remove every notification.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Clear'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await _supabase
+          .from('notifications')
+          .delete()
+          .eq('user_id', user.id);
+
+      if (!mounted) return;
+      setState(() => notifications.clear());
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Clear failed: $e')),
+      );
+    }
+  }
+
   Future<void> deleteNotification(
-      Map<String, dynamic> notification) async {
+    Map<String, dynamic> notification,
+  ) async {
     final id = notification['id']?.toString();
     if (id == null) return;
 
     try {
-      await _supabase.from('notifications').delete().eq('id', id);
+      await _supabase
+          .from('notifications')
+          .delete()
+          .eq('id', id);
 
       if (!mounted) return;
       setState(() => notifications.remove(notification));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to delete notification: $e')),
+        SnackBar(
+          content: Text('Failed to delete notification: $e'),
+        ),
       );
     }
   }
 
-  // ✅ IconData instead of corrupted emoji strings
   IconData notificationIcon(String? type) {
     switch (type) {
       case 'follow':
@@ -171,7 +223,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ null-safe unread count
     final unreadCount = notifications
         .where((n) => n['is_read'] != true)
         .length;
@@ -194,6 +245,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 'Mark all read',
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
+            ),
+          if (notifications.isNotEmpty)
+            IconButton(
+              tooltip: 'Clear all',
+              onPressed: clearAll,
+              icon: const Icon(Icons.delete_sweep_outlined),
             ),
         ],
       ),
@@ -268,6 +325,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             if (!isRead) {
                               markAsRead(notification);
                             }
+
+                            final postId = notification['post_id']
+                                ?.toString();
+
+                            if (postId != null &&
+                                postId.isNotEmpty &&
+                                widget.onOpenPost != null) {
+                              widget.onOpenPost!(postId);
+                            }
                           },
                           child: Container(
                             color: isRead
@@ -283,10 +349,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                               children: [
                                 CircleAvatar(
                                   radius: 25,
-                                  // ✅ withValues instead of withOpacity
-                                  backgroundColor: notificationColor(
-                                    type,
-                                  ).withValues(alpha: 0.12),
+                                  backgroundColor:
+                                      notificationColor(type)
+                                          .withValues(alpha: 0.12),
                                   child: Icon(
                                     notificationIcon(type),
                                     color:
@@ -312,8 +377,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                       ),
                                       const SizedBox(height: 5),
                                       Text(
-                                        formatTime(notification[
-                                            'created_at']),
+                                        formatTime(
+                                          notification[
+                                              'created_at'],
+                                        ),
                                         style: const TextStyle(
                                           fontSize: 12,
                                           color: Colors.grey,
@@ -330,7 +397,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                       top: 8,
                                       left: 8,
                                     ),
-                                    decoration: const BoxDecoration(
+                                    decoration:
+                                        const BoxDecoration(
                                       color: Colors.blue,
                                       shape: BoxShape.circle,
                                     ),
