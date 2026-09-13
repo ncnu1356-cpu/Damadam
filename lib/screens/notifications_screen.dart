@@ -166,6 +166,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  // ✅ UPDATED: added 'reply'
   IconData notificationIcon(String? type) {
     switch (type) {
       case 'follow':
@@ -174,6 +175,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return Icons.favorite;
       case 'comment':
         return Icons.comment;
+      case 'reply':
+        return Icons.reply;
       case 'mention':
         return Icons.alternate_email;
       default:
@@ -181,6 +184,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  // ✅ UPDATED: added 'reply'
   Color notificationColor(String? type) {
     switch (type) {
       case 'follow':
@@ -189,6 +193,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return Colors.red;
       case 'comment':
         return Colors.green;
+      case 'reply':
+        return Colors.teal;
       default:
         return Colors.deepPurple;
     }
