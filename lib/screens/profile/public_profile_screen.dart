@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import 'profile_service.dart';
+import '../../services/profile_service.dart';
 
 class PublicProfileScreen extends StatefulWidget {
   final String userId;
