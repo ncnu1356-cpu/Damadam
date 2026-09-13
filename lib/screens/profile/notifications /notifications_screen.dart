@@ -9,13 +9,10 @@ class NotificationsScreen extends StatefulWidget {
       _NotificationsScreenState();
 }
 
-class _NotificationsScreenState
-    extends State<NotificationsScreen> {
-  final SupabaseClient _supabase =
-      Supabase.instance.client;
+class _NotificationsScreenState extends State<NotificationsScreen> {
+  final SupabaseClient _supabase = Supabase.instance.client;
 
   List<Map<String, dynamic>> notifications = [];
-
   bool isLoading = true;
 
   @override
@@ -26,11 +23,8 @@ class _NotificationsScreenState
 
   Future<void> loadNotifications() async {
     final user = _supabase.auth.currentUser;
-
     if (user == null) {
-      setState(() {
-        isLoading = false;
-      });
+      setState(() => isLoading = false);
       return;
     }
 
@@ -41,132 +35,96 @@ class _NotificationsScreenState
           .eq('user_id', user.id)
           .order('created_at', ascending: false);
 
-      final data =
-          List<Map<String, dynamic>>.from(response);
+      final data = List<Map<String, dynamic>>.from(response);
 
+      if (!mounted) return;
       setState(() {
         notifications = data;
         isLoading = false;
       });
     } catch (e) {
-      setState(() {
-        isLoading = false;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Failed to load notifications: $e',
-            ),
-          ),
-        );
-      }
+      if (!mounted) return;
+      setState(() => isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load notifications: $e')),
+      );
     }
   }
 
-  Future<void> markAsRead(
-    Map<String, dynamic> notification,
-  ) async {
+  Future<void> markAsRead(Map<String, dynamic> notification) async {
     final id = notification['id']?.toString();
-
     if (id == null) return;
 
     try {
       await _supabase
           .from('notifications')
-          .update({
-            'is_read': true,
-          })
-          .eq('id', id);
+          .update({'is_read': true}).eq('id', id);
 
-      setState(() {
-        notification['is_read'] = true;
-      });
+      if (!mounted) return;
+      setState(() => notification['is_read'] = true);
     } catch (e) {
-      debugPrint(
-        'Mark notification as read error: $e',
-      );
+      debugPrint('Mark notification as read error: $e');
     }
   }
 
   Future<void> markAllAsRead() async {
     final user = _supabase.auth.currentUser;
-
     if (user == null) return;
 
     try {
       await _supabase
           .from('notifications')
-          .update({
-            'is_read': true,
-          })
+          .update({'is_read': true})
           .eq('user_id', user.id)
           .eq('is_read', false);
 
+      if (!mounted) return;
       setState(() {
-        for (final notification in notifications) {
-          notification['is_read'] = true;
+        for (final n in notifications) {
+          n['is_read'] = true;
         }
       });
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Failed to mark notifications as read: $e',
-            ),
-          ),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to mark notifications as read: $e'),
+        ),
+      );
     }
   }
 
   Future<void> deleteNotification(
-    Map<String, dynamic> notification,
-  ) async {
+      Map<String, dynamic> notification) async {
     final id = notification['id']?.toString();
-
     if (id == null) return;
 
     try {
-      await _supabase
-          .from('notifications')
-          .delete()
-          .eq('id', id);
+      await _supabase.from('notifications').delete().eq('id', id);
 
-      setState(() {
-        notifications.remove(notification);
-      });
+      if (!mounted) return;
+      setState(() => notifications.remove(notification));
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Failed to delete notification: $e',
-            ),
-          ),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to delete notification: $e')),
+      );
     }
   }
 
-  String notificationIcon(String? type) {
+  // ✅ IconData instead of corrupted emoji strings
+  IconData notificationIcon(String? type) {
     switch (type) {
       case 'follow':
-        return '👤';
-
+        return Icons.person_add;
       case 'like':
-        return '❤️';
-
+        return Icons.favorite;
       case 'comment':
-        return '💬';
-
+        return Icons.comment;
       case 'mention':
-        return '🔔';
-
+        return Icons.alternate_email;
       default:
-        return '🔔';
+        return Icons.notifications;
     }
   }
 
@@ -174,13 +132,10 @@ class _NotificationsScreenState
     switch (type) {
       case 'follow':
         return Colors.blue;
-
       case 'like':
         return Colors.red;
-
       case 'comment':
         return Colors.green;
-
       default:
         return Colors.deepPurple;
     }
@@ -188,31 +143,21 @@ class _NotificationsScreenState
 
   String formatTime(dynamic value) {
     if (value == null) return '';
-
     try {
-      final date =
-          DateTime.parse(value.toString()).toLocal();
-
+      final date = DateTime.parse(value.toString()).toLocal();
       final now = DateTime.now();
-
       final difference = now.difference(date);
 
-      if (difference.inSeconds < 60) {
-        return 'Just now';
-      }
-
+      if (difference.inSeconds < 60) return 'Just now';
       if (difference.inMinutes < 60) {
         return '${difference.inMinutes}m ago';
       }
-
       if (difference.inHours < 24) {
         return '${difference.inHours}h ago';
       }
-
       if (difference.inDays < 7) {
         return '${difference.inDays}d ago';
       }
-
       return '${date.day}/${date.month}/${date.year}';
     } catch (_) {
       return '';
@@ -225,11 +170,9 @@ class _NotificationsScreenState
 
   @override
   Widget build(BuildContext context) {
+    // ✅ null-safe unread count
     final unreadCount = notifications
-        .where(
-          (notification) =>
-              notification['is_read'] == false,
-        )
+        .where((n) => n['is_read'] != true)
         .length;
 
     return Scaffold(
@@ -240,9 +183,7 @@ class _NotificationsScreenState
         foregroundColor: Colors.black,
         title: const Text(
           'Notifications',
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
           if (unreadCount > 0)
@@ -250,9 +191,7 @@ class _NotificationsScreenState
               onPressed: markAllAsRead,
               child: const Text(
                 'Mark all read',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                ),
+                style: TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
         ],
@@ -260,9 +199,7 @@ class _NotificationsScreenState
       body: RefreshIndicator(
         onRefresh: refreshNotifications,
         child: isLoading
-            ? const Center(
-                child: CircularProgressIndicator(),
-              )
+            ? const Center(child: CircularProgressIndicator())
             : notifications.isEmpty
                 ? ListView(
                     physics:
@@ -289,9 +226,7 @@ class _NotificationsScreenState
                       Center(
                         child: Text(
                           'Your notifications will appear here.',
-                          style: TextStyle(
-                            color: Colors.grey,
-                          ),
+                          style: TextStyle(color: Colors.grey),
                         ),
                       ),
                     ],
@@ -299,49 +234,34 @@ class _NotificationsScreenState
                 : ListView.builder(
                     physics:
                         const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 8,
-                    ),
+                    padding:
+                        const EdgeInsets.symmetric(vertical: 8),
                     itemCount: notifications.length,
                     itemBuilder: (context, index) {
-                      final notification =
-                          notifications[index];
-
+                      final notification = notifications[index];
                       final type =
                           notification['type']?.toString();
-
-                      final message =
-                          notification['message']
-                                  ?.toString() ??
-                              'You have a new notification';
-
+                      final message = notification['message']
+                              ?.toString() ??
+                          'You have a new notification';
                       final isRead =
                           notification['is_read'] == true;
 
                       return Dismissible(
-                        key: ValueKey(
-                          notification['id'],
-                        ),
-                        direction:
-                            DismissDirection.endToStart,
+                        key: ValueKey(notification['id']),
+                        direction: DismissDirection.endToStart,
                         background: Container(
                           color: Colors.red,
-                          alignment:
-                              Alignment.centerRight,
+                          alignment: Alignment.centerRight,
                           padding:
-                              const EdgeInsets.only(
-                            right: 20,
-                          ),
+                              const EdgeInsets.only(right: 20),
                           child: const Icon(
                             Icons.delete,
                             color: Colors.white,
                           ),
                         ),
-                        onDismissed: (_) {
-                          deleteNotification(
-                            notification,
-                          );
-                        },
+                        onDismissed: (_) =>
+                            deleteNotification(notification),
                         child: InkWell(
                           onTap: () {
                             if (!isRead) {
@@ -352,8 +272,7 @@ class _NotificationsScreenState
                             color: isRead
                                 ? Colors.white
                                 : const Color(0xFFEEF3FF),
-                            padding:
-                                const EdgeInsets.symmetric(
+                            padding: const EdgeInsets.symmetric(
                               horizontal: 16,
                               vertical: 14,
                             ),
@@ -363,18 +282,15 @@ class _NotificationsScreenState
                               children: [
                                 CircleAvatar(
                                   radius: 25,
-                                  backgroundColor:
-                                      notificationColor(
+                                  // ✅ withValues instead of withOpacity
+                                  backgroundColor: notificationColor(
                                     type,
-                                  ).withOpacity(0.12),
-                                  child: Text(
-                                    notificationIcon(
-                                      type,
-                                    ),
-                                    style:
-                                        const TextStyle(
-                                      fontSize: 22,
-                                    ),
+                                  ).withValues(alpha: 0.12),
+                                  child: Icon(
+                                    notificationIcon(type),
+                                    color:
+                                        notificationColor(type),
+                                    size: 24,
                                   ),
                                 ),
                                 const SizedBox(width: 12),
@@ -393,16 +309,11 @@ class _NotificationsScreenState
                                           color: Colors.black87,
                                         ),
                                       ),
-                                      const SizedBox(
-                                        height: 5,
-                                      ),
+                                      const SizedBox(height: 5),
                                       Text(
-                                        formatTime(
-                                          notification[
-                                              'created_at'],
-                                        ),
-                                        style:
-                                            const TextStyle(
+                                        formatTime(notification[
+                                            'created_at']),
+                                        style: const TextStyle(
                                           fontSize: 12,
                                           color: Colors.grey,
                                         ),
@@ -414,16 +325,13 @@ class _NotificationsScreenState
                                   Container(
                                     width: 9,
                                     height: 9,
-                                    margin:
-                                        const EdgeInsets.only(
+                                    margin: const EdgeInsets.only(
                                       top: 8,
                                       left: 8,
                                     ),
-                                    decoration:
-                                        const BoxDecoration(
+                                    decoration: const BoxDecoration(
                                       color: Colors.blue,
-                                      shape:
-                                          BoxShape.circle,
+                                      shape: BoxShape.circle,
                                     ),
                                   ),
                               ],
