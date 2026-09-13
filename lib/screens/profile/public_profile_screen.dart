@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/profile_service.dart';
 import '../../services/notification_service.dart';
+import '../follow_list_screen.dart';
 
 class PublicProfileScreen extends StatefulWidget {
   final String userId;
@@ -108,6 +109,23 @@ class _PublicProfileScreenState
         ),
       );
     }
+  }
+
+  Future<void> _openFollowList({
+    required bool showFollowers,
+  }) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FollowListScreen(
+          userId: widget.userId,
+          showFollowers: showFollowers,
+        ),
+      ),
+    );
+
+    // Reload counts when user returns
+    await loadProfile();
   }
 
   Future<void> _sendFollowNotification() async {
@@ -358,6 +376,10 @@ class _PublicProfileScreenState
                 ),
               ],
               const SizedBox(height: 18),
+
+              // =========================================
+              // STATS — now tappable
+              // =========================================
               Row(
                 children: [
                   _statItem(
@@ -368,14 +390,19 @@ class _PublicProfileScreenState
                   _statItem(
                     followersCount.toString(),
                     'Followers',
+                    onTap: () =>
+                        _openFollowList(showFollowers: true),
                   ),
                   const SizedBox(width: 28),
                   _statItem(
                     followingCount.toString(),
                     'Following',
+                    onTap: () =>
+                        _openFollowList(showFollowers: false),
                   ),
                 ],
               ),
+
               if (!isOwnProfile) ...[
                 const SizedBox(height: 18),
                 SizedBox(
@@ -424,9 +451,10 @@ class _PublicProfileScreenState
 
   Widget _statItem(
     String number,
-    String label,
-  ) {
-    return Column(
+    String label, {
+    VoidCallback? onTap,
+  }) {
+    final content = Column(
       children: [
         Text(
           number,
@@ -444,6 +472,20 @@ class _PublicProfileScreenState
           ),
         ),
       ],
+    );
+
+    if (onTap == null) return content;
+
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: 4,
+          vertical: 4,
+        ),
+        child: content,
+      ),
     );
   }
 
@@ -479,7 +521,6 @@ class _PublicPostCard extends StatelessWidget {
     required this.post,
   });
 
-  // ✅ NEW: friendly timestamp
   String _timeAgo(String? iso) {
     if (iso == null) return '';
     final dt = DateTime.tryParse(iso)?.toLocal();
