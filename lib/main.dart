@@ -1,4 +1,3 @@
-
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -17,12 +16,10 @@ SupabaseClient get supabase => Supabase.instance.client;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
   await Supabase.initialize(
     url: supabaseUrl,
     anonKey: supabasePublishableKey,
   );
-
   runApp(const DamadamApp());
 }
 
@@ -54,11 +51,9 @@ class AuthGate extends StatelessWidget {
       builder: (context, snapshot) {
         final session =
             snapshot.data?.session ?? supabase.auth.currentSession;
-
         if (session != null) {
           return const HomeScreen();
         }
-
         return const WelcomeScreen();
       },
     );
@@ -194,7 +189,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
     }
 
     final usernameRegex = RegExp(r'^[a-z0-9_]{3,20}$');
-
     if (!usernameRegex.hasMatch(username)) {
       showMessage(
         'Username must be 3-20 characters and use only a-z, 0-9 or _.',
@@ -231,7 +225,6 @@ class _SignUpScreenState extends State<SignUpScreen> {
       );
 
       final user = response.user;
-
       if (user == null) {
         showMessage('Account could not be created.');
         return;
@@ -525,7 +518,6 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   Future<void> sendResetEmail() async {
     final email = emailController.text.trim();
-
     if (email.isEmpty) {
       showMessage('Please enter your email.');
       return;
@@ -988,6 +980,19 @@ class _PostCardState extends State<PostCard> {
   bool likeLoading = false;
   int likeCount = 0;
 
+  // ✅ NEW: timestamp helper
+  String _timeAgo(String? iso) {
+    if (iso == null) return '';
+    final dt = DateTime.tryParse(iso)?.toLocal();
+    if (dt == null) return '';
+    final diff = DateTime.now().difference(dt);
+    if (diff.inSeconds < 60) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${dt.day}/${dt.month}/${dt.year}';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1160,10 +1165,28 @@ class _PostCardState extends State<PostCard> {
                   child: avatarUrl == null ? const Icon(Icons.person) : null,
                 ),
                 const SizedBox(width: 10),
+                // ✅ UPDATED: username + timestamp in the same row
                 Expanded(
-                  child: Text(
-                    getUsername(),
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  child: Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          getUsername(),
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        _timeAgo(widget.post['created_at']?.toString()),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 if (isOwner)
@@ -1410,7 +1433,8 @@ class _CommentsScreenState extends State<CommentsScreen> {
                                       color: Theme.of(context)
                                           .colorScheme
                                           .surfaceContainerHighest,
-                                      borderRadius: BorderRadius.circular(14),
+                                      borderRadius:
+                                          BorderRadius.circular(14),
                                     ),
                                     child: Column(
                                       crossAxisAlignment:
@@ -1462,8 +1486,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
                         ? const SizedBox(
                             width: 20,
                             height: 20,
-                            child:
-                                CircularProgressIndicator(strokeWidth: 2),
+                            child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.send),
                   ),
