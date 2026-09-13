@@ -638,11 +638,103 @@ class _HomeScreenState extends State<HomeScreen> {
   bool loading = true;
   int unreadNotificationCount = 0;
 
+  // ✅ REALTIME channels
+  RealtimeChannel? _postsChannel;
+  RealtimeChannel? _notificationsChannel;
+
   @override
   void initState() {
     super.initState();
     loadPosts();
     loadUnreadNotificationCount();
+    _subscribeToPosts();
+    _subscribeToNotifications();
+  }
+
+  @override
+  void dispose() {
+    _postsChannel?.unsubscribe();
+    _notificationsChannel?.unsubscribe();
+    super.dispose();
+  }
+
+  // ✅ REALTIME: new posts appear automatically
+  void _subscribeToPosts() {
+    _postsChannel = supabase
+        .channel('public:posts')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'posts',
+          callback: (payload) async {
+            final newPostId =
+                payload.newRecord['id']?.toString();
+            if (newPostId == null) return;
+
+            if (posts.any(
+              (p) => p['id']?.toString() == newPostId,
+            )) {
+              return;
+            }
+
+            try {
+              final full = await supabase
+                  .from('posts')
+                  .select(
+                    'id, user_id, content, image_url, created_at, '
+                    'profiles(username, full_name, avatar_url)',
+                  )
+                  .eq('id', newPostId)
+                  .maybeSingle();
+
+              if (full == null) return;
+              if (!mounted) return;
+
+              setState(() {
+                posts.insert(
+                  0,
+                  Map<String, dynamic>.from(full),
+                );
+              });
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('New post added to your feed'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            } catch (e) {
+              debugPrint('Realtime post fetch error: $e');
+            }
+          },
+        )
+        .subscribe();
+  }
+
+  // ✅ REALTIME: notification badge updates live
+  void _subscribeToNotifications() {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+
+    _notificationsChannel = supabase
+        .channel('public:notifications:${user.id}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: user.id,
+          ),
+          callback: (payload) {
+            if (!mounted) return;
+            setState(() {
+              unreadNotificationCount++;
+            });
+          },
+        )
+        .subscribe();
   }
 
   Future<void> loadUnreadNotificationCount() async {
@@ -705,6 +797,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> logout() async {
     try {
+      _postsChannel?.unsubscribe();
+      _notificationsChannel?.unsubscribe();
       await supabase.auth.signOut();
     } catch (e) {
       if (!mounted) return;
@@ -841,8 +935,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     itemCount: posts.length,
                     itemBuilder: (context, index) {
+                      final post = posts[index];
                       return PostCard(
-                        post: posts[index],
+                        key: ValueKey(post['id']),
+                        post: post,
                         onDeleted: loadPosts,
                       );
                     },
@@ -1558,9 +1654,6 @@ class _CommentsScreenState extends State<CommentsScreen> {
     }
   }
 
-  // ============================================================
-  // ✅ UPDATED: Now handles both comments AND replies
-  // ============================================================
   Future<void> _sendCommentNotification(
     String commentText,
     Map<String, dynamic>? parentComment,
@@ -1569,7 +1662,6 @@ class _CommentsScreenState extends State<CommentsScreen> {
     if (currentUser == null) return;
 
     try {
-      // Post owner
       final post = await supabase
           .from('posts')
           .select('user_id')
@@ -1578,11 +1670,9 @@ class _CommentsScreenState extends State<CommentsScreen> {
 
       final postOwnerId = post?['user_id']?.toString();
 
-      // Parent comment author (if this is a reply)
       final parentAuthorId =
           parentComment?['user_id']?.toString();
 
-      // Current user's display name
       final profile = await supabase
           .from('profiles')
           .select('username, full_name')
@@ -1605,7 +1695,6 @@ class _CommentsScreenState extends State<CommentsScreen> {
 
       final notified = <String>{};
 
-      // 1. Notify parent comment author (if it's a reply)
       if (parentAuthorId != null &&
           parentAuthorId != currentUser.id &&
           !notified.contains(parentAuthorId)) {
@@ -1619,7 +1708,6 @@ class _CommentsScreenState extends State<CommentsScreen> {
         notified.add(parentAuthorId);
       }
 
-      // 2. Notify post owner (if different)
       if (postOwnerId != null &&
           postOwnerId != currentUser.id &&
           !notified.contains(postOwnerId)) {
@@ -1667,7 +1755,6 @@ class _CommentsScreenState extends State<CommentsScreen> {
         'parent_id': _replyTo?['id'],
       });
 
-      // ✅ Capture _replyTo BEFORE clearing it
       final parentForNotification = _replyTo;
 
       commentController.clear();
