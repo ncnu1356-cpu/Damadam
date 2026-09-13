@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class DmService {
@@ -80,7 +81,53 @@ class DmService {
         .select()
         .maybeSingle();
 
+    // ✅ NEW: send a notification to the recipient
+    if (res != null) {
+      await _sendRequestNotification(otherUserId);
+    }
+
     return res;
+  }
+
+  // ✅ NEW: notification helper
+  Future<void> _sendRequestNotification(
+    String otherUserId,
+  ) async {
+    final me = currentUserId;
+    if (me == null) return;
+
+    try {
+      final profile = await _supabase
+          .from('profiles')
+          .select('username, full_name')
+          .eq('id', me)
+          .maybeSingle();
+
+      final username =
+          profile?['username']?.toString().trim();
+      final fullName =
+          profile?['full_name']?.toString().trim();
+
+      final displayName =
+          username != null && username.isNotEmpty
+              ? '@$username'
+              : (fullName != null && fullName.isNotEmpty
+                  ? fullName
+                  : 'Someone');
+
+      await _supabase.from('notifications').insert({
+        'user_id': otherUserId,
+        'sender_id': me,
+        'type': 'dm_request',
+        'message': '$displayName sent you a 1on1 request',
+        'is_read': false,
+      });
+    } catch (e) {
+      // Notification failure should not break the request flow
+      if (kDebugMode) {
+        debugPrint('DM request notification failed: $e');
+      }
+    }
   }
 
   Future<List<Map<String, dynamic>>> getIncomingRequests() async {
