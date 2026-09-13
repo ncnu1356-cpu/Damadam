@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'screens/notifications_screen.dart';
+import 'screens/search_screen.dart';
 import 'screens/profile/profile_screen.dart';
 import 'screens/profile/public_profile_screen.dart';
 import 'services/notification_service.dart';
@@ -638,7 +639,6 @@ class _HomeScreenState extends State<HomeScreen> {
   bool loading = true;
   int unreadNotificationCount = 0;
 
-  // ✅ REALTIME channels
   RealtimeChannel? _postsChannel;
   RealtimeChannel? _notificationsChannel;
 
@@ -658,7 +658,6 @@ class _HomeScreenState extends State<HomeScreen> {
     super.dispose();
   }
 
-  // ✅ REALTIME: new posts appear automatically
   void _subscribeToPosts() {
     _postsChannel = supabase
         .channel('public:posts')
@@ -711,7 +710,6 @@ class _HomeScreenState extends State<HomeScreen> {
         .subscribe();
   }
 
-  // ✅ REALTIME: notification badge updates live
   void _subscribeToNotifications() {
     final user = supabase.auth.currentUser;
     if (user == null) return;
@@ -795,6 +793,17 @@ class _HomeScreenState extends State<HomeScreen> {
     await loadPosts();
   }
 
+  Future<void> openSearch() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const SearchScreen(),
+      ),
+    );
+    if (!mounted) return;
+    await loadPosts();
+  }
+
   Future<void> logout() async {
     try {
       _postsChannel?.unsubscribe();
@@ -817,6 +826,14 @@ class _HomeScreenState extends State<HomeScreen> {
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
+          // ✅ SEARCH
+          IconButton(
+            tooltip: 'Search',
+            onPressed: openSearch,
+            icon: const Icon(Icons.search),
+          ),
+
+          // NOTIFICATIONS
           Stack(
             children: [
               IconButton(
@@ -881,6 +898,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
             ],
           ),
+
+          // PROFILE
           IconButton(
             tooltip: 'My Profile',
             onPressed: () async {
@@ -895,11 +914,15 @@ class _HomeScreenState extends State<HomeScreen> {
             },
             icon: const Icon(Icons.person_outline),
           ),
+
+          // CREATE POST
           IconButton(
             tooltip: 'Create Post',
             onPressed: createPost,
             icon: const Icon(Icons.add_circle_outline),
           ),
+
+          // LOGOUT
           IconButton(
             tooltip: 'Logout',
             onPressed: logout,
