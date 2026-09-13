@@ -5,7 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'screens/profile/profile_screen.dart';
-
+import 'screens/profile/public_profile_screen.dart';
 const String supabaseUrl =
     'https://fhmshhmklsqgiyvcdvbr.supabase.co';
 
