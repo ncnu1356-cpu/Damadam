@@ -91,7 +91,7 @@ class WelcomeScreen extends StatelessWidget {
                     Icons.people_alt_rounded,
                     size: 55,
                     color: Theme.of(context)
-                        .colorScheme
+                        .colorSchemea
                         .primary,
                   ),
                 ),
