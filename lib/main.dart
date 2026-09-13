@@ -47,7 +47,7 @@ class DamadamApp extends StatelessWidget {
 }
 
 // ============================================================
-// AUTH GATE — refreshes stale sessions automatically
+// AUTH GATE
 // ============================================================
 
 class AuthGate extends StatefulWidget {
@@ -107,6 +107,7 @@ class _MainShellState extends State<MainShell> {
   int _dmUnreadCount = 0;
 
   RealtimeChannel? _dmBadgeChannel;
+  RealtimeChannel? _dmRequestChannel; // ✅ NEW
 
   final _pages = const [
     HomeTab(),
@@ -124,14 +125,16 @@ class _MainShellState extends State<MainShell> {
   @override
   void dispose() {
     _dmBadgeChannel?.unsubscribe();
+    _dmRequestChannel?.unsubscribe(); // ✅ NEW
     super.dispose();
   }
 
-  // ✅ Listens for new DM messages sent to me → increments badge
+  // ✅ Listens for new DM messages AND new DM requests
   void _subscribeDmBadge() {
     final me = supabase.auth.currentUser?.id;
     if (me == null) return;
 
+    // Channel 1: new MESSAGES sent to me
     _dmBadgeChannel = supabase
         .channel('dm:badge:$me')
         .onPostgresChanges(
@@ -147,7 +150,6 @@ class _MainShellState extends State<MainShell> {
                 payload.newRecord['conversation_id']?.toString();
             if (convId == null) return;
 
-            // Verify I'm a participant of this conversation
             try {
               final conv = await supabase
                   .from('dm_conversations')
@@ -159,7 +161,6 @@ class _MainShellState extends State<MainShell> {
               if (conv == null) return;
               if (!mounted) return;
 
-              // Only increment if user isn't currently on the 1on1 tab
               if (_index != 1) {
                 setState(() => _dmUnreadCount++);
               }
@@ -167,10 +168,30 @@ class _MainShellState extends State<MainShell> {
           },
         )
         .subscribe();
+
+    // ✅ Channel 2: new REQUESTS where I'm the recipient
+    _dmRequestChannel = supabase
+        .channel('dm:requests:badge:$me')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'dm_conversations',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'recipient_id',
+            value: me,
+          ),
+          callback: (_) {
+            if (!mounted) return;
+            if (_index != 1) {
+              setState(() => _dmUnreadCount++);
+            }
+          },
+        )
+        .subscribe();
   }
 
   void _onTap(int i) {
-    // Middle "Share" button → open create post, don't change tab
     if (i == 2) {
       Navigator.push(
         context,
@@ -181,10 +202,8 @@ class _MainShellState extends State<MainShell> {
       return;
     }
 
-    // Map: 0=Home, 1=DM, 3=Profile, 4=More → pageIndex
     final pageIndex = i < 2 ? i : i - 1;
 
-    // Clear DM badge when entering the 1on1 tab
     if (pageIndex == 1) {
       setState(() {
         _index = pageIndex;
@@ -197,7 +216,6 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
-    // Map state index to visible bottom nav index
     final navIndex = _index < 2 ? _index : _index + 1;
 
     return Scaffold(
@@ -215,7 +233,6 @@ class _MainShellState extends State<MainShell> {
             label: 'Home',
           ),
 
-          // ✅ 1on1 with DM badge
           NavigationDestination(
             icon: _dmUnreadCount > 0
                 ? Badge(
@@ -262,7 +279,7 @@ class _MainShellState extends State<MainShell> {
 }
 
 // ============================================================
-// HOME TAB — feed with For You / For Me toggle
+// HOME TAB
 // ============================================================
 
 class HomeTab extends StatefulWidget {
@@ -549,7 +566,6 @@ class _HomeTabState extends State<HomeTab> {
       ),
       body: Column(
         children: [
-          // Toggle row
           Container(
             color: Colors.white,
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
@@ -673,7 +689,7 @@ class _HomeTabState extends State<HomeTab> {
 }
 
 // ============================================================
-// MORE TAB — menu
+// MORE TAB
 // ============================================================
 
 class MoreTab extends StatelessWidget {
@@ -827,7 +843,7 @@ class MoreTab extends StatelessWidget {
 }
 
 // ============================================================
-// AUTH SCREENS
+// WELCOME / SIGNUP / LOGIN / FORGOT
 // ============================================================
 
 class WelcomeScreen extends StatelessWidget {
@@ -1384,7 +1400,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 }
 
 // ============================================================
-// CREATE POST SCREEN
+// CREATE POST
 // ============================================================
 
 class CreatePostScreen extends StatefulWidget {
