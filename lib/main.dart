@@ -46,8 +46,33 @@ class DamadamApp extends StatelessWidget {
   }
 }
 
-class AuthGate extends StatelessWidget {
+// ============================================================
+// AUTH GATE — now refreshes stale sessions automatically
+// ============================================================
+
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  @override
+  void initState() {
+    super.initState();
+    _refreshSession();
+  }
+
+  Future<void> _refreshSession() async {
+    try {
+      if (supabase.auth.currentSession != null) {
+        await supabase.auth.refreshSession();
+      }
+    } catch (e) {
+      debugPrint('Session refresh error: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
