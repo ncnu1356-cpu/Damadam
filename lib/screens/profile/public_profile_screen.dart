@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/profile_service.dart';
+import '../../services/notification_service.dart';
 
 class PublicProfileScreen extends StatefulWidget {
   final String userId;
@@ -109,16 +110,49 @@ class _PublicProfileScreenState
     }
   }
 
+  Future<void> _sendFollowNotification() async {
+    final currentUser = _supabase.auth.currentUser;
+
+    if (currentUser == null ||
+        currentUser.id == widget.userId) {
+      return;
+    }
+
+    try {
+      final senderProfile = await _supabase
+          .from('profiles')
+          .select('username, full_name')
+          .eq('id', currentUser.id)
+          .maybeSingle();
+
+      final username =
+          senderProfile?['username']?.toString().trim() ?? '';
+
+      final fullName =
+          senderProfile?['full_name']?.toString().trim() ?? '';
+
+      final displayName = fullName.isNotEmpty
+          ? fullName
+          : (username.isNotEmpty ? username : 'Someone');
+
+      await NotificationService().createNotification(
+        userId: widget.userId,
+        senderId: currentUser.id,
+        type: 'follow',
+        message: '$displayName started following you',
+      );
+    } catch (e) {
+      debugPrint(
+        'Follow notification error: $e',
+      );
+    }
+  }
+
   Future<void> toggleFollow() async {
     final currentUser = _supabase.auth.currentUser;
 
-    if (currentUser == null) {
-      return;
-    }
-
-    if (isOwnProfile || followLoading) {
-      return;
-    }
+    if (currentUser == null) return;
+    if (isOwnProfile || followLoading) return;
 
     setState(() {
       followLoading = true;
@@ -129,14 +163,8 @@ class _PublicProfileScreenState
         await _supabase
             .from('follows')
             .delete()
-            .eq(
-              'follower_id',
-              currentUser.id,
-            )
-            .eq(
-              'following_id',
-              widget.userId,
-            );
+            .eq('follower_id', currentUser.id)
+            .eq('following_id', widget.userId);
 
         if (!mounted) return;
 
@@ -159,6 +187,8 @@ class _PublicProfileScreenState
           isFollowing = true;
           followersCount++;
         });
+
+        await _sendFollowNotification();
       }
     } catch (e) {
       if (!mounted) return;
@@ -264,7 +294,6 @@ class _PublicProfileScreenState
                       )
                     : null,
               ),
-
               Positioned(
                 left: 20,
                 bottom: 0,
@@ -295,7 +324,6 @@ class _PublicProfileScreenState
             ],
           ),
         ),
-
         Padding(
           padding:
               const EdgeInsets.fromLTRB(20, 0, 20, 15),
@@ -312,7 +340,6 @@ class _PublicProfileScreenState
                   fontWeight: FontWeight.bold,
                 ),
               ),
-
               if (username.isNotEmpty)
                 Text(
                   '@$username',
@@ -321,7 +348,6 @@ class _PublicProfileScreenState
                     color: Colors.grey.shade600,
                   ),
                 ),
-
               if (bio.isNotEmpty) ...[
                 const SizedBox(height: 8),
                 Text(
@@ -331,9 +357,7 @@ class _PublicProfileScreenState
                   ),
                 ),
               ],
-
               const SizedBox(height: 18),
-
               Row(
                 children: [
                   _statItem(
@@ -352,7 +376,6 @@ class _PublicProfileScreenState
                   ),
                 ],
               ),
-
               if (!isOwnProfile) ...[
                 const SizedBox(height: 18),
                 SizedBox(
@@ -456,6 +479,20 @@ class _PublicPostCard extends StatelessWidget {
     required this.post,
   });
 
+  // ✅ NEW: friendly timestamp
+  String _timeAgo(String? iso) {
+    if (iso == null) return '';
+    final dt = DateTime.tryParse(iso)?.toLocal();
+    if (dt == null) return '';
+
+    final diff = DateTime.now().difference(dt);
+    if (diff.inSeconds < 60) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return '${dt.day}/${dt.month}/${dt.year}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final content =
@@ -465,7 +502,7 @@ class _PublicPostCard extends StatelessWidget {
         post['image_url']?.toString() ?? '';
 
     final createdAt =
-        post['created_at']?.toString() ?? '';
+        post['created_at']?.toString();
 
     return Card(
       margin: const EdgeInsets.symmetric(
@@ -486,7 +523,6 @@ class _PublicPostCard extends StatelessWidget {
                   fontSize: 16,
                 ),
               ),
-
             if (imageUrl.isNotEmpty) ...[
               const SizedBox(height: 10),
               ClipRRect(
@@ -509,11 +545,11 @@ class _PublicPostCard extends StatelessWidget {
                 ),
               ),
             ],
-
-            if (createdAt.isNotEmpty) ...[
+            if (createdAt != null &&
+                createdAt.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(
-                createdAt,
+                _timeAgo(createdAt),
                 style: TextStyle(
                   fontSize: 11,
                   color: Colors.grey.shade500,
