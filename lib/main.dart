@@ -418,7 +418,7 @@ class _HomeTabState extends State<HomeTab> {
           ? supabase
               .from('posts')
               .select(
-                'id, user_id, content, image_url, created_at, '
+                'id, user_id, content, image_url, created_at, edited_at, '
                 'profiles(username, full_name, avatar_url)',
               )
               .order('created_at', ascending: false)
@@ -426,7 +426,7 @@ class _HomeTabState extends State<HomeTab> {
           : supabase
               .from('posts')
               .select(
-                'id, user_id, content, image_url, created_at, '
+                'id, user_id, content, image_url, created_at, edited_at, '
                 'profiles(username, full_name, avatar_url)',
               )
               .lt('created_at', oldest)
@@ -507,7 +507,7 @@ class _HomeTabState extends State<HomeTab> {
               final full = await supabase
                   .from('posts')
                   .select(
-                    'id, user_id, content, image_url, created_at, '
+                    'id, user_id, content, image_url, created_at, edited_at, '
                     'profiles(username, full_name, avatar_url)',
                   )
                   .eq('id', newPostId)
@@ -1787,7 +1787,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 }
 
 // ============================================================
-// POST CARD
+// POST CARD — with edit + save + share
 // ============================================================
 
 class PostCard extends StatefulWidget {
@@ -1814,6 +1814,16 @@ class _PostCardState extends State<PostCard> {
 
   bool saved = false;
 
+  late String _content;
+
+  @override
+  void initState() {
+    super.initState();
+    _content = widget.post['content']?.toString() ?? '';
+    loadLikeStatus();
+    _loadSaveStatus();
+  }
+
   String _timeAgo(String? iso) {
     if (iso == null) return '';
     final dt = DateTime.tryParse(iso)?.toLocal();
@@ -1826,12 +1836,7 @@ class _PostCardState extends State<PostCard> {
     return '${dt.day}/${dt.month}/${dt.year}';
   }
 
-  @override
-  void initState() {
-    super.initState();
-    loadLikeStatus();
-    _loadSaveStatus();
-  }
+  bool get _isEdited => widget.post['edited_at'] != null;
 
   Future<void> _loadSaveStatus() async {
     final s = await _save.isSaved(widget.post['id'].toString());
@@ -1859,7 +1864,7 @@ class _PostCardState extends State<PostCard> {
   }
 
   void _share() {
-    final content = widget.post['content']?.toString().trim() ?? '';
+    final content = _content.trim();
     final name = getUsername();
     final shareText = '$name posted on Damadam:\n\n'
         '${content.isEmpty ? "[Photo]" : content}\n\n'
@@ -1872,6 +1877,71 @@ class _PostCardState extends State<PostCard> {
         duration: Duration(seconds: 2),
       ),
     );
+  }
+
+  // ✅ NEW: Edit post
+  Future<void> _editPost() async {
+    final controller = TextEditingController(text: _content);
+
+    final newContent = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit post'),
+        content: TextField(
+          controller: controller,
+          maxLines: 6,
+          maxLength: 1000,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: "What's on your mind?",
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (newContent == null) return;
+    if (newContent.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Post text cannot be empty')),
+      );
+      return;
+    }
+    if (newContent == _content) return;
+
+    try {
+      await supabase.from('posts').update({
+        'content': newContent,
+        'edited_at': DateTime.now().toIso8601String(),
+      }).eq('id', widget.post['id']);
+
+      if (!mounted) return;
+      setState(() {
+        _content = newContent;
+        widget.post['content'] = newContent;
+        widget.post['edited_at'] = DateTime.now().toIso8601String();
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Post updated')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Update failed: $e')),
+      );
+    }
   }
 
   Future<void> _openReportSheet() async {
@@ -2125,7 +2195,6 @@ class _PostCardState extends State<PostCard> {
 
   @override
   Widget build(BuildContext context) {
-    final content = widget.post['content']?.toString() ?? '';
     final imageUrl = widget.post['image_url']?.toString();
     final userId = widget.post['user_id']?.toString();
     final currentUserId = supabase.auth.currentUser?.id;
@@ -2178,6 +2247,17 @@ class _PostCardState extends State<PostCard> {
                             color: cs.onSurfaceVariant,
                           ),
                         ),
+                        if (_isEdited) ...[
+                          const SizedBox(width: 4),
+                          Text(
+                            '(edited)',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurfaceVariant,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -2185,10 +2265,22 @@ class _PostCardState extends State<PostCard> {
                 PopupMenuButton<String>(
                   icon: const Icon(Icons.more_vert),
                   onSelected: (value) {
+                    if (value == 'edit') _editPost();
                     if (value == 'delete') deletePost();
                     if (value == 'report') _openReportSheet();
                   },
                   itemBuilder: (context) => [
+                    if (isOwner)
+                      const PopupMenuItem(
+                        value: 'edit',
+                        child: Row(
+                          children: [
+                            Icon(Icons.edit_outlined),
+                            SizedBox(width: 8),
+                            Text('Edit'),
+                          ],
+                        ),
+                      ),
                     if (isOwner)
                       const PopupMenuItem(
                         value: 'delete',
@@ -2216,11 +2308,11 @@ class _PostCardState extends State<PostCard> {
               ],
             ),
           ),
-          if (content.isNotEmpty)
+          if (_content.isNotEmpty)
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
               child: Text(
-                content,
+                _content,
                 style: const TextStyle(fontSize: 16),
               ),
             ),
@@ -2304,7 +2396,7 @@ class _PostCardState extends State<PostCard> {
 }
 
 // ============================================================
-// COMMENTS SCREEN
+// COMMENTS SCREEN — with likes + edit/delete/report
 // ============================================================
 
 class CommentsScreen extends StatefulWidget {
@@ -2327,8 +2419,15 @@ class _CommentsScreenState extends State<CommentsScreen> {
   bool loading = true;
   bool sending = false;
 
+  // ✅ Comment likes state: commentId -> {count, likedByMe}
+  Map<String, int> _commentLikeCounts = {};
+  Set<String> _myCommentLikes = {};
+  Set<String> _likeInProgress = {};
+
   Map<String, dynamic>? _replyTo;
   Map<String, dynamic>? _editing;
+
+  String? get _me => supabase.auth.currentUser?.id;
 
   @override
   void initState() {
@@ -2353,15 +2452,145 @@ class _CommentsScreenState extends State<CommentsScreen> {
           .eq('post_id', widget.postId)
           .order('created_at', ascending: true);
 
+      final list = List<Map<String, dynamic>>.from(response);
+
       if (!mounted) return;
       setState(() {
-        comments = List<Map<String, dynamic>>.from(response);
+        comments = list;
         loading = false;
       });
+
+      // ✅ Load likes for all comments
+      await _loadCommentLikes();
     } catch (e) {
       if (!mounted) return;
       setState(() => loading = false);
       showMessage('Could not load comments: $e');
+    }
+  }
+
+  Future<void> _loadCommentLikes() async {
+    if (comments.isEmpty) return;
+
+    try {
+      final commentIds =
+          comments.map((c) => c['id'].toString()).toList();
+
+      final res = await supabase
+          .from('comment_likes')
+          .select('comment_id, user_id')
+          .inFilter('comment_id', commentIds);
+
+      final list = List<Map<String, dynamic>>.from(res);
+
+      final counts = <String, int>{};
+      final mine = <String>{};
+
+      for (final row in list) {
+        final cid = row['comment_id']?.toString() ?? '';
+        final uid = row['user_id']?.toString() ?? '';
+        if (cid.isEmpty) continue;
+
+        counts[cid] = (counts[cid] ?? 0) + 1;
+        if (uid == _me) mine.add(cid);
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _commentLikeCounts = counts;
+        _myCommentLikes = mine;
+      });
+    } catch (e) {
+      debugPrint('Load comment likes error: $e');
+    }
+  }
+
+  Future<void> _toggleCommentLike(Map<String, dynamic> comment) async {
+    final me = _me;
+    if (me == null) return;
+
+    final cid = comment['id'].toString();
+    if (_likeInProgress.contains(cid)) return;
+
+    setState(() => _likeInProgress.add(cid));
+
+    final isLiked = _myCommentLikes.contains(cid);
+
+    // Optimistic update
+    setState(() {
+      if (isLiked) {
+        _myCommentLikes.remove(cid);
+        _commentLikeCounts[cid] = (_commentLikeCounts[cid] ?? 1) - 1;
+      } else {
+        _myCommentLikes.add(cid);
+        _commentLikeCounts[cid] = (_commentLikeCounts[cid] ?? 0) + 1;
+      }
+    });
+
+    try {
+      if (isLiked) {
+        await supabase
+            .from('comment_likes')
+            .delete()
+            .eq('comment_id', cid)
+            .eq('user_id', me);
+      } else {
+        await supabase.from('comment_likes').insert({
+          'comment_id': cid,
+          'user_id': me,
+        });
+
+        // ✅ Notify comment owner (not self)
+        final ownerId = comment['user_id']?.toString();
+        if (ownerId != null && ownerId != me) {
+          await _sendCommentLikeNotification(ownerId);
+        }
+      }
+    } catch (e) {
+      // Revert on error
+      if (!mounted) return;
+      setState(() {
+        if (isLiked) {
+          _myCommentLikes.add(cid);
+          _commentLikeCounts[cid] = (_commentLikeCounts[cid] ?? 0) + 1;
+        } else {
+          _myCommentLikes.remove(cid);
+          _commentLikeCounts[cid] = (_commentLikeCounts[cid] ?? 1) - 1;
+        }
+      });
+      debugPrint('Toggle comment like error: $e');
+    } finally {
+      if (mounted) setState(() => _likeInProgress.remove(cid));
+    }
+  }
+
+  Future<void> _sendCommentLikeNotification(String ownerId) async {
+    final me = _me;
+    if (me == null) return;
+
+    try {
+      final profile = await supabase
+          .from('profiles')
+          .select('username, full_name')
+          .eq('id', me)
+          .maybeSingle();
+
+      final username = profile?['username']?.toString().trim();
+      final displayName = username != null && username.isNotEmpty
+          ? '@$username'
+          : (profile?['full_name']?.toString().trim().isNotEmpty == true
+              ? profile!['full_name'].toString().trim()
+              : 'Someone');
+
+      await NotificationService().createNotification(
+        userId: ownerId,
+        senderId: me,
+        type: 'comment_like',
+        postId: widget.postId,
+        message: '$displayName liked your comment',
+      );
+    } catch (e) {
+      debugPrint('Comment like notification error: $e');
     }
   }
 
@@ -2675,7 +2904,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final me = supabase.auth.currentUser?.id;
+    final me = _me;
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -2697,6 +2926,11 @@ class _CommentsScreenState extends State<CommentsScreen> {
                               comment['user_id']?.toString() == me;
                           final edited =
                               comment['edited_at'] != null;
+
+                          final cid = comment['id'].toString();
+                          final likeCount = _commentLikeCounts[cid] ?? 0;
+                          final likedByMe = _myCommentLikes.contains(cid);
+                          final liking = _likeInProgress.contains(cid);
 
                           return Padding(
                             padding: const EdgeInsets.only(bottom: 12),
@@ -2739,19 +2973,72 @@ class _CommentsScreenState extends State<CommentsScreen> {
                                             comment['content']?.toString() ??
                                                 '',
                                           ),
-                                          if (edited)
-                                            Padding(
-                                              padding:
-                                                  const EdgeInsets.only(top: 4),
-                                              child: Text(
-                                                '(edited)',
-                                                style: TextStyle(
-                                                  fontSize: 10,
-                                                  color: cs.onSurfaceVariant,
-                                                  fontStyle: FontStyle.italic,
+                                          const SizedBox(height: 6),
+                                          Row(
+                                            children: [
+                                              // ✅ Like button
+                                              InkWell(
+                                                onTap: liking
+                                                    ? null
+                                                    : () =>
+                                                        _toggleCommentLike(
+                                                            comment),
+                                                borderRadius:
+                                                    BorderRadius.circular(20),
+                                                child: Padding(
+                                                  padding:
+                                                      const EdgeInsets.all(
+                                                          4),
+                                                  child: Row(
+                                                    mainAxisSize:
+                                                        MainAxisSize.min,
+                                                    children: [
+                                                      Icon(
+                                                        likedByMe
+                                                            ? Icons.favorite
+                                                            : Icons
+                                                                .favorite_border,
+                                                        size: 16,
+                                                        color: likedByMe
+                                                            ? Colors.red
+                                                            : cs
+                                                                .onSurfaceVariant,
+                                                      ),
+                                                      if (likeCount > 0) ...[
+                                                        const SizedBox(
+                                                            width: 4),
+                                                        Text(
+                                                          '$likeCount',
+                                                          style: TextStyle(
+                                                            fontSize: 12,
+                                                            color: likedByMe
+                                                                ? Colors.red
+                                                                : cs
+                                                                    .onSurfaceVariant,
+                                                            fontWeight:
+                                                                FontWeight
+                                                                    .w500,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ],
+                                                  ),
                                                 ),
                                               ),
-                                            ),
+                                              const SizedBox(width: 8),
+                                              if (edited)
+                                                Text(
+                                                  '(edited)',
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    color:
+                                                        cs.onSurfaceVariant,
+                                                    fontStyle:
+                                                        FontStyle.italic,
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
                                         ],
                                       ),
                                     ),
