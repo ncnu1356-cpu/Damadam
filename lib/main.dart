@@ -18,6 +18,7 @@ import 'services/save_service.dart';
 import 'services/report_service.dart';
 import 'services/session_service.dart';
 import 'theme_controller.dart';
+import 'widgets/stories_strip.dart';
 
 const String supabaseUrl =
     'https://fhmshhmklsqgiyvcdvbr.supabase.co';
@@ -316,7 +317,7 @@ class _MainShellState extends State<MainShell> {
 }
 
 // ============================================================
-// HOME TAB — INFINITE SCROLL
+// HOME TAB — INFINITE SCROLL + STORIES
 // ============================================================
 
 class HomeTab extends StatefulWidget {
@@ -651,6 +652,10 @@ class _HomeTabState extends State<HomeTab> {
       ),
       body: Column(
         children: [
+          // ✅ STORIES STRIP
+          StoriesStrip(onStoryPublished: refreshFeed),
+          Divider(height: 1, color: cs.outlineVariant),
+          // ✅ Feed toggle
           Container(
             color: cs.surface,
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
@@ -1879,7 +1884,6 @@ class _PostCardState extends State<PostCard> {
     );
   }
 
-  // ✅ NEW: Edit post
   Future<void> _editPost() async {
     final controller = TextEditingController(text: _content);
 
@@ -2419,7 +2423,6 @@ class _CommentsScreenState extends State<CommentsScreen> {
   bool loading = true;
   bool sending = false;
 
-  // ✅ Comment likes state: commentId -> {count, likedByMe}
   Map<String, int> _commentLikeCounts = {};
   Set<String> _myCommentLikes = {};
   Set<String> _likeInProgress = {};
@@ -2460,7 +2463,6 @@ class _CommentsScreenState extends State<CommentsScreen> {
         loading = false;
       });
 
-      // ✅ Load likes for all comments
       await _loadCommentLikes();
     } catch (e) {
       if (!mounted) return;
@@ -2516,7 +2518,6 @@ class _CommentsScreenState extends State<CommentsScreen> {
 
     final isLiked = _myCommentLikes.contains(cid);
 
-    // Optimistic update
     setState(() {
       if (isLiked) {
         _myCommentLikes.remove(cid);
@@ -2540,14 +2541,12 @@ class _CommentsScreenState extends State<CommentsScreen> {
           'user_id': me,
         });
 
-        // ✅ Notify comment owner (not self)
         final ownerId = comment['user_id']?.toString();
         if (ownerId != null && ownerId != me) {
           await _sendCommentLikeNotification(ownerId);
         }
       }
     } catch (e) {
-      // Revert on error
       if (!mounted) return;
       setState(() {
         if (isLiked) {
@@ -2976,7 +2975,6 @@ class _CommentsScreenState extends State<CommentsScreen> {
                                           const SizedBox(height: 6),
                                           Row(
                                             children: [
-                                              // ✅ Like button
                                               InkWell(
                                                 onTap: liking
                                                     ? null
