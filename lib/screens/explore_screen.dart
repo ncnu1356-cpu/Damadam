@@ -79,7 +79,6 @@ class _ExploreScreenState extends State<ExploreScreen> {
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 30),
                 children: [
-                  // Trending hashtags
                   if (hashtags.isNotEmpty) ...[
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
@@ -212,7 +211,9 @@ class _ExplorePostCard extends StatelessWidget {
     if (profile is Map<String, dynamic>) {
       final full = profile['full_name']?.toString().trim() ?? '';
       final uname = profile['username']?.toString().trim() ?? '';
-      name = full.isNotEmpty ? full : (uname.isNotEmpty ? '@$uname' : 'Damadam User');
+      name = full.isNotEmpty
+          ? full
+          : (uname.isNotEmpty ? '@$uname' : 'Damadam User');
       avatar = profile['avatar_url']?.toString() ?? '';
     }
 
@@ -233,7 +234,8 @@ class _ExplorePostCard extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) => PublicProfileScreen(userId: uid),
+                          builder: (_) =>
+                              PublicProfileScreen(userId: uid),
                         ),
                       );
                     }
@@ -244,7 +246,8 @@ class _ExplorePostCard extends StatelessWidget {
                     backgroundImage:
                         avatar.isNotEmpty ? NetworkImage(avatar) : null,
                     child: avatar.isEmpty
-                        ? const Icon(Icons.person, size: 20, color: Colors.white)
+                        ? const Icon(Icons.person,
+                            size: 20, color: Colors.white)
                         : null,
                   ),
                 ),
@@ -323,7 +326,7 @@ class _ExplorePostCard extends StatelessWidget {
     );
   }
 
-  // Tap hashtags in content
+  // ✅ FIXED: uses TextSpan for hashtags + tap via recognizer
   Widget _buildContentWithHashtags(String content, ColorScheme cs) {
     final regex = RegExp(r'#(\w{1,50})');
     final spans = <TextSpan>[];
@@ -337,20 +340,14 @@ class _ExplorePostCard extends StatelessWidget {
       }
       final tag = match.group(1)!;
       spans.add(
-        WidgetSpan(
-          alignment: PlaceholderAlignment.baseline,
-          baseline: TextBaseline.alphabetic,
-          child: GestureDetector(
-            onTap: () => onTapTag(tag),
-            child: Text(
-              '#$tag',
-              style: TextStyle(
-                fontSize: 15,
-                color: cs.primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+        TextSpan(
+          text: '#$tag',
+          style: TextStyle(
+            color: cs.primary,
+            fontWeight: FontWeight.w600,
           ),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () => onTapTag(tag),
         ),
       );
       lastMatchEnd = match.end;
