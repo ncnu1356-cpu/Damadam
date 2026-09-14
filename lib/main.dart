@@ -11,6 +11,8 @@ import 'screens/dm_tab.dart';
 import 'screens/settings_screen.dart';
 import 'screens/saved_posts_screen.dart';
 import 'screens/blocked_users_screen.dart';
+import 'screens/explore_screen.dart';
+import 'screens/people_you_may_know_screen.dart';
 import 'screens/profile/profile_screen.dart';
 import 'screens/profile/public_profile_screen.dart';
 import 'services/notification_service.dart';
@@ -665,13 +667,11 @@ class _HomeTabState extends State<HomeTab> {
       ),
       body: Column(
         children: [
-          // ✅ Stories strip ONLY on For You (Home) tab
           if (!widget.showFollowingOnly)
             StoriesStrip(onStoryPublished: refreshFeed),
           if (!widget.showFollowingOnly)
             Divider(height: 1, color: cs.outlineVariant),
 
-          // Feed
           Expanded(
             child: RefreshIndicator(
               onRefresh: refreshFeed,
@@ -819,16 +819,30 @@ class MoreTab extends StatelessWidget {
               _tile(
                 context: context,
                 icon: Icons.star_outline,
-                title: 'Recommended for you',
-                subtitle: 'People you may know',
-                onTap: () => _show('Recommended', context),
+                title: 'People You May Know',
+                subtitle: 'Follow people to see their posts',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const PeopleYouMayKnowScreen(),
+                    ),
+                  );
+                },
               ),
               _tile(
                 context: context,
                 icon: Icons.explore_outlined,
                 title: 'Explore',
-                subtitle: 'Trending posts',
-                onTap: () => _show('Explore', context),
+                subtitle: 'Trending posts and hashtags',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ExploreScreen(),
+                    ),
+                  );
+                },
               ),
 
               const SizedBox(height: 12),
