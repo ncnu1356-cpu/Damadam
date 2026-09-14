@@ -1,4 +1,3 @@
-
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -118,7 +117,7 @@ class _AuthGateState extends State<AuthGate> {
 }
 
 // ============================================================
-// MAIN SHELL
+// MAIN SHELL — bottom navigation
 // ============================================================
 
 class MainShell extends StatefulWidget {
@@ -135,8 +134,15 @@ class _MainShellState extends State<MainShell> {
   RealtimeChannel? _dmBadgeChannel;
   RealtimeChannel? _dmRequestChannel;
 
+  // Pages order (page indices):
+  // 0 = Home (For You)
+  // 1 = For Me
+  // 2 = DmTab
+  // 3 = Profile
+  // 4 = More
   final _pages = const [
-    HomeTab(),
+    HomeTab(showFollowingOnly: false), // Home / For You
+    HomeTab(showFollowingOnly: true),  // For Me
     DmTab(),
     ProfileScreen(),
     MoreTab(),
@@ -204,7 +210,8 @@ class _MainShellState extends State<MainShell> {
               if (conv == null) return;
               if (!mounted) return;
 
-              if (_index != 1) {
+              // Only increment if user isn't on the DM tab (page index 2)
+              if (_index != 2) {
                 setState(() => _dmUnreadCount++);
               }
             } catch (_) {}
@@ -228,7 +235,7 @@ class _MainShellState extends State<MainShell> {
             if (requesterId == me) return;
 
             if (!mounted) return;
-            if (_index != 1) {
+            if (_index != 2) {
               setState(() => _dmUnreadCount++);
             }
           },
@@ -237,6 +244,14 @@ class _MainShellState extends State<MainShell> {
   }
 
   void _onTap(int i) {
+    // Bottom nav mapping:
+    // 0 = Home
+    // 1 = For Me
+    // 2 = Share (opens modal, doesn't change page)
+    // 3 = 1on1
+    // 4 = Profile
+    // 5 = More
+
     if (i == 2) {
       Navigator.push(
         context,
@@ -249,7 +264,8 @@ class _MainShellState extends State<MainShell> {
 
     final pageIndex = i < 2 ? i : i - 1;
 
-    if (pageIndex == 1) {
+    // Clear DM badge when entering DM tab (page 2)
+    if (pageIndex == 2) {
       setState(() {
         _index = pageIndex;
         _dmUnreadCount = 0;
@@ -261,6 +277,12 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    // Map current page index back to nav index for NavigationBar:
+    // page 0 → nav 0
+    // page 1 → nav 1
+    // page 2 (DM) → nav 3
+    // page 3 (Profile) → nav 4
+    // page 4 (More) → nav 5
     final navIndex = _index < 2 ? _index : _index + 1;
 
     return Scaffold(
@@ -276,6 +298,16 @@ class _MainShellState extends State<MainShell> {
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home),
             label: 'Home',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.people_outline),
+            selectedIcon: Icon(Icons.people),
+            label: 'For Me',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.add_circle_outline),
+            selectedIcon: Icon(Icons.add_circle),
+            label: 'Share',
           ),
           NavigationDestination(
             icon: _dmUnreadCount > 0
@@ -297,11 +329,6 @@ class _MainShellState extends State<MainShell> {
             label: '1on1',
           ),
           const NavigationDestination(
-            icon: Icon(Icons.add_circle_outline),
-            selectedIcon: Icon(Icons.add_circle),
-            label: 'Share',
-          ),
-          const NavigationDestination(
             icon: Icon(Icons.person_outline),
             selectedIcon: Icon(Icons.person),
             label: 'Profile',
@@ -318,11 +345,18 @@ class _MainShellState extends State<MainShell> {
 }
 
 // ============================================================
-// HOME TAB — INFINITE SCROLL + STORIES
+// HOME TAB (also used for "For Me")
 // ============================================================
 
 class HomeTab extends StatefulWidget {
-  const HomeTab({super.key});
+  /// If true → shows only posts from users you follow (NOT your own).
+  /// If false → shows all posts (For You).
+  final bool showFollowingOnly;
+
+  const HomeTab({
+    super.key,
+    this.showFollowingOnly = false,
+  });
 
   @override
   State<HomeTab> createState() => _HomeTabState();
@@ -334,18 +368,18 @@ class _HomeTabState extends State<HomeTab> {
   final ScrollController _scrollController = ScrollController();
 
   List<Map<String, dynamic>> allPosts = [];
-  List<Map<String, dynamic>> forMePosts = [];
-
   List<String> _followingIds = [];
 
   bool loading = true;
   bool loadingMore = false;
   bool hasMorePosts = true;
-  bool showForYou = true;
   int unreadNotificationCount = 0;
 
   RealtimeChannel? _postsChannel;
   RealtimeChannel? _notificationsChannel;
+
+  String get _pageTitle =>
+      widget.showFollowingOnly ? 'For Me' : 'Damadam';
 
   @override
   void initState() {
@@ -374,12 +408,14 @@ class _HomeTabState extends State<HomeTab> {
   }
 
   Future<void> _loadAll() async {
+    // ✅ Load following first (needed for filtering)
+    await _loadFollowingIds();
+
     await Future.wait([
-      _loadFollowingIds(),
       _loadPosts(reset: true),
       _loadUnreadNotificationCount(),
     ]);
-    _rebuildForMe();
+
     if (!mounted) return;
     setState(() => loading = false);
   }
@@ -411,29 +447,41 @@ class _HomeTabState extends State<HomeTab> {
 
     if (!hasMorePosts) return;
 
+    // ✅ For Me: if user follows nobody, show empty
+    if (widget.showFollowingOnly && _followingIds.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        allPosts = [];
+        hasMorePosts = false;
+      });
+      return;
+    }
+
     try {
+      const selectCols =
+          'id, user_id, content, image_url, created_at, edited_at, '
+          'profiles(username, full_name, avatar_url)';
+
       final oldest = allPosts.isEmpty
           ? null
           : allPosts.last['created_at']?.toString();
 
-      final response = await (oldest == null
-          ? supabase
-              .from('posts')
-              .select(
-                'id, user_id, content, image_url, created_at, edited_at, '
-                'profiles(username, full_name, avatar_url)',
-              )
-              .order('created_at', ascending: false)
-              .limit(_pageSize)
-          : supabase
-              .from('posts')
-              .select(
-                'id, user_id, content, image_url, created_at, edited_at, '
-                'profiles(username, full_name, avatar_url)',
-              )
-              .lt('created_at', oldest)
-              .order('created_at', ascending: false)
-              .limit(_pageSize));
+      // Build base query
+      var q = supabase.from('posts').select(selectCols);
+
+      // Filter by following if For Me
+      if (widget.showFollowingOnly) {
+        q = q.inFilter('user_id', _followingIds);
+      }
+
+      // Pagination cursor
+      if (oldest != null) {
+        q = q.lt('created_at', oldest);
+      }
+
+      final response = await q
+          .order('created_at', ascending: false)
+          .limit(_pageSize);
 
       final newPosts = List<Map<String, dynamic>>.from(response);
 
@@ -446,7 +494,6 @@ class _HomeTabState extends State<HomeTab> {
         }
         hasMorePosts = newPosts.length == _pageSize;
       });
-      _rebuildForMe();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -461,13 +508,6 @@ class _HomeTabState extends State<HomeTab> {
     await _loadPosts();
     if (!mounted) return;
     setState(() => loadingMore = false);
-  }
-
-  void _rebuildForMe() {
-    forMePosts = allPosts.where((p) {
-      final uid = p['user_id']?.toString() ?? '';
-      return _followingIds.contains(uid) || uid == _currentUserId();
-    }).toList();
   }
 
   String _currentUserId() => supabase.auth.currentUser?.id ?? '';
@@ -492,7 +532,7 @@ class _HomeTabState extends State<HomeTab> {
 
   void _subscribeToPosts() {
     _postsChannel = supabase
-        .channel('public:posts')
+        .channel('public:posts:${widget.showFollowingOnly ? "me" : "you"}')
         .onPostgresChanges(
           event: PostgresChangeEvent.insert,
           schema: 'public',
@@ -518,11 +558,14 @@ class _HomeTabState extends State<HomeTab> {
               if (full == null) return;
               if (!mounted) return;
 
+              // ✅ For Me: only insert if from a followed user
+              if (widget.showFollowingOnly) {
+                final uid = full['user_id']?.toString() ?? '';
+                if (!_followingIds.contains(uid)) return;
+              }
+
               final post = Map<String, dynamic>.from(full);
-              setState(() {
-                allPosts.insert(0, post);
-                _rebuildForMe();
-              });
+              setState(() => allPosts.insert(0, post));
             } catch (e) {
               debugPrint('Realtime post fetch error: $e');
             }
@@ -536,7 +579,7 @@ class _HomeTabState extends State<HomeTab> {
     if (user == null) return;
 
     _notificationsChannel = supabase
-        .channel('public:notifications:${user.id}')
+        .channel('public:notifications:${user.id}:${widget.showFollowingOnly ? "me" : "you"}')
         .onPostgresChanges(
           event: PostgresChangeEvent.insert,
           schema: 'public',
@@ -558,7 +601,6 @@ class _HomeTabState extends State<HomeTab> {
     await _loadFollowingIds();
     await _loadPosts(reset: true);
     await _loadUnreadNotificationCount();
-    _rebuildForMe();
     if (!mounted) return;
     setState(() {});
   }
@@ -594,14 +636,13 @@ class _HomeTabState extends State<HomeTab> {
 
   @override
   Widget build(BuildContext context) {
-    final visiblePosts = showForYou ? allPosts : forMePosts;
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          'Damadam',
-          style: TextStyle(fontWeight: FontWeight.bold),
+        title: Text(
+          _pageTitle,
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
@@ -651,135 +692,68 @@ class _HomeTabState extends State<HomeTab> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // ✅ STORIES STRIP
-          StoriesStrip(onStoryPublished: refreshFeed),
-          Divider(height: 1, color: cs.outlineVariant),
-          // ✅ Feed toggle
-          Container(
-            color: cs.surface,
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-            child: Row(
-              children: [
-                _toggleButton(
-                  label: 'For You',
-                  active: showForYou,
-                  onTap: () => setState(() => showForYou = true),
-                ),
-                const SizedBox(width: 8),
-                _toggleButton(
-                  label: 'For Me',
-                  active: !showForYou,
-                  onTap: () => setState(() => showForYou = false),
-                ),
-                const Spacer(),
-                Text(
-                  '${visiblePosts.length}',
-                  style: TextStyle(
-                    color: cs.onSurfaceVariant,
-                    fontSize: 13,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Divider(height: 1, color: cs.outlineVariant),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: refreshFeed,
-              child: loading
-                  ? const Center(child: CircularProgressIndicator())
-                  : visiblePosts.isEmpty
-                      ? ListView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          children: [
-                            const SizedBox(height: 140),
-                            Icon(
-                              showForYou
-                                  ? Icons.article_outlined
-                                  : Icons.people_outline,
-                              size: 70,
-                              color: cs.onSurfaceVariant,
-                            ),
-                            const SizedBox(height: 12),
-                            Center(
-                              child: Text(
-                                showForYou
-                                    ? 'No posts yet.\nCreate the first post!'
-                                    : _followingIds.isEmpty
-                                        ? 'Follow people to see their posts here'
-                                        : 'No posts from people you follow yet',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  color: cs.onSurfaceVariant,
-                                ),
+      body: RefreshIndicator(
+        onRefresh: refreshFeed,
+        child: loading
+            ? const Center(child: CircularProgressIndicator())
+            : allPosts.isEmpty
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      const SizedBox(height: 140),
+                      Icon(
+                        widget.showFollowingOnly
+                            ? Icons.people_outline
+                            : Icons.article_outlined,
+                        size: 70,
+                        color: cs.onSurfaceVariant,
+                      ),
+                      const SizedBox(height: 12),
+                      Center(
+                        child: Text(
+                          widget.showFollowingOnly
+                              ? (_followingIds.isEmpty
+                                  ? 'Follow people to see their posts here'
+                                  : 'No posts from people you follow yet')
+                              : 'No posts yet.\nCreate the first post!',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: cs.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : ListView.builder(
+                    controller: _scrollController,
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.only(top: 8, bottom: 20),
+                    itemCount: allPosts.length + (loadingMore ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (loadingMore && index == allPosts.length) {
+                        return const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: Center(
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
                               ),
                             ),
-                          ],
-                        )
-                      : ListView.builder(
-                          controller:
-                              showForYou ? _scrollController : null,
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.only(top: 8, bottom: 20),
-                          itemCount: visiblePosts.length +
-                              (showForYou && loadingMore ? 1 : 0),
-                          itemBuilder: (context, index) {
-                            if (showForYou &&
-                                loadingMore &&
-                                index == visiblePosts.length) {
-                              return const Padding(
-                                padding: EdgeInsets.all(16),
-                                child: Center(
-                                  child: SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  ),
-                                ),
-                              );
-                            }
+                          ),
+                        );
+                      }
 
-                            final post = visiblePosts[index];
-                            return PostCard(
-                              key: ValueKey(post['id']),
-                              post: post,
-                              onDeleted: refreshFeed,
-                            );
-                          },
-                        ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _toggleButton({
-    required String label,
-    required bool active,
-    required VoidCallback onTap,
-  }) {
-    final cs = Theme.of(context).colorScheme;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: active ? cs.primary : cs.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontWeight: FontWeight.w600,
-            color: active ? cs.onPrimary : cs.onSurface,
-          ),
-        ),
+                      final post = allPosts[index];
+                      return PostCard(
+                        key: ValueKey(post['id']),
+                        post: post,
+                        onDeleted: refreshFeed,
+                      );
+                    },
+                  ),
       ),
     );
   }
@@ -1793,7 +1767,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 }
 
 // ============================================================
-// POST CARD — with edit + save + share
+// POST CARD
 // ============================================================
 
 class PostCard extends StatefulWidget {
@@ -2401,7 +2375,7 @@ class _PostCardState extends State<PostCard> {
 }
 
 // ============================================================
-// COMMENTS SCREEN — with likes + edit/delete/report
+// COMMENTS SCREEN
 // ============================================================
 
 class CommentsScreen extends StatefulWidget {
@@ -2541,11 +2515,6 @@ class _CommentsScreenState extends State<CommentsScreen> {
           'comment_id': cid,
           'user_id': me,
         });
-
-        final ownerId = comment['user_id']?.toString();
-        if (ownerId != null && ownerId != me) {
-          await _sendCommentLikeNotification(ownerId);
-        }
       }
     } catch (e) {
       if (!mounted) return;
@@ -2561,36 +2530,6 @@ class _CommentsScreenState extends State<CommentsScreen> {
       debugPrint('Toggle comment like error: $e');
     } finally {
       if (mounted) setState(() => _likeInProgress.remove(cid));
-    }
-  }
-
-  Future<void> _sendCommentLikeNotification(String ownerId) async {
-    final me = _me;
-    if (me == null) return;
-
-    try {
-      final profile = await supabase
-          .from('profiles')
-          .select('username, full_name')
-          .eq('id', me)
-          .maybeSingle();
-
-      final username = profile?['username']?.toString().trim();
-      final displayName = username != null && username.isNotEmpty
-          ? '@$username'
-          : (profile?['full_name']?.toString().trim().isNotEmpty == true
-              ? profile!['full_name'].toString().trim()
-              : 'Someone');
-
-      await NotificationService().createNotification(
-        userId: ownerId,
-        senderId: me,
-        type: 'comment_like',
-        postId: widget.postId,
-        message: '$displayName liked your comment',
-      );
-    } catch (e) {
-      debugPrint('Comment like notification error: $e');
     }
   }
 
