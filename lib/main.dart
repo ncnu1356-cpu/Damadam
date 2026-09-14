@@ -134,15 +134,9 @@ class _MainShellState extends State<MainShell> {
   RealtimeChannel? _dmBadgeChannel;
   RealtimeChannel? _dmRequestChannel;
 
-  // Pages order (page indices):
-  // 0 = Home (For You)
-  // 1 = For Me
-  // 2 = DmTab
-  // 3 = Profile
-  // 4 = More
   final _pages = const [
-    HomeTab(showFollowingOnly: false), // Home / For You
-    HomeTab(showFollowingOnly: true),  // For Me
+    HomeTab(showFollowingOnly: false),
+    HomeTab(showFollowingOnly: true),
     DmTab(),
     ProfileScreen(),
     MoreTab(),
@@ -210,7 +204,6 @@ class _MainShellState extends State<MainShell> {
               if (conv == null) return;
               if (!mounted) return;
 
-              // Only increment if user isn't on the DM tab (page index 2)
               if (_index != 2) {
                 setState(() => _dmUnreadCount++);
               }
@@ -244,14 +237,6 @@ class _MainShellState extends State<MainShell> {
   }
 
   void _onTap(int i) {
-    // Bottom nav mapping:
-    // 0 = Home
-    // 1 = For Me
-    // 2 = Share (opens modal, doesn't change page)
-    // 3 = 1on1
-    // 4 = Profile
-    // 5 = More
-
     if (i == 2) {
       Navigator.push(
         context,
@@ -264,7 +249,6 @@ class _MainShellState extends State<MainShell> {
 
     final pageIndex = i < 2 ? i : i - 1;
 
-    // Clear DM badge when entering DM tab (page 2)
     if (pageIndex == 2) {
       setState(() {
         _index = pageIndex;
@@ -277,12 +261,6 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
-    // Map current page index back to nav index for NavigationBar:
-    // page 0 → nav 0
-    // page 1 → nav 1
-    // page 2 (DM) → nav 3
-    // page 3 (Profile) → nav 4
-    // page 4 (More) → nav 5
     final navIndex = _index < 2 ? _index : _index + 1;
 
     return Scaffold(
@@ -349,8 +327,6 @@ class _MainShellState extends State<MainShell> {
 // ============================================================
 
 class HomeTab extends StatefulWidget {
-  /// If true → shows only posts from users you follow (NOT your own).
-  /// If false → shows all posts (For You).
   final bool showFollowingOnly;
 
   const HomeTab({
@@ -408,7 +384,6 @@ class _HomeTabState extends State<HomeTab> {
   }
 
   Future<void> _loadAll() async {
-    // ✅ Load following first (needed for filtering)
     await _loadFollowingIds();
 
     await Future.wait([
@@ -447,7 +422,6 @@ class _HomeTabState extends State<HomeTab> {
 
     if (!hasMorePosts) return;
 
-    // ✅ For Me: if user follows nobody, show empty
     if (widget.showFollowingOnly && _followingIds.isEmpty) {
       if (!mounted) return;
       setState(() {
@@ -466,15 +440,12 @@ class _HomeTabState extends State<HomeTab> {
           ? null
           : allPosts.last['created_at']?.toString();
 
-      // Build base query
       var q = supabase.from('posts').select(selectCols);
 
-      // Filter by following if For Me
       if (widget.showFollowingOnly) {
         q = q.inFilter('user_id', _followingIds);
       }
 
-      // Pagination cursor
       if (oldest != null) {
         q = q.lt('created_at', oldest);
       }
@@ -558,7 +529,6 @@ class _HomeTabState extends State<HomeTab> {
               if (full == null) return;
               if (!mounted) return;
 
-              // ✅ For Me: only insert if from a followed user
               if (widget.showFollowingOnly) {
                 final uid = full['user_id']?.toString() ?? '';
                 if (!_followingIds.contains(uid)) return;
@@ -579,7 +549,8 @@ class _HomeTabState extends State<HomeTab> {
     if (user == null) return;
 
     _notificationsChannel = supabase
-        .channel('public:notifications:${user.id}:${widget.showFollowingOnly ? "me" : "you"}')
+        .channel(
+            'public:notifications:${user.id}:${widget.showFollowingOnly ? "me" : "you"}')
         .onPostgresChanges(
           event: PostgresChangeEvent.insert,
           schema: 'public',
@@ -692,68 +663,84 @@ class _HomeTabState extends State<HomeTab> {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: refreshFeed,
-        child: loading
-            ? const Center(child: CircularProgressIndicator())
-            : allPosts.isEmpty
-                ? ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    children: [
-                      const SizedBox(height: 140),
-                      Icon(
-                        widget.showFollowingOnly
-                            ? Icons.people_outline
-                            : Icons.article_outlined,
-                        size: 70,
-                        color: cs.onSurfaceVariant,
-                      ),
-                      const SizedBox(height: 12),
-                      Center(
-                        child: Text(
-                          widget.showFollowingOnly
-                              ? (_followingIds.isEmpty
-                                  ? 'Follow people to see their posts here'
-                                  : 'No posts from people you follow yet')
-                              : 'No posts yet.\nCreate the first post!',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: cs.onSurfaceVariant,
-                          ),
-                        ),
-                      ),
-                    ],
-                  )
-                : ListView.builder(
-                    controller: _scrollController,
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.only(top: 8, bottom: 20),
-                    itemCount: allPosts.length + (loadingMore ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (loadingMore && index == allPosts.length) {
-                        return const Padding(
-                          padding: EdgeInsets.all(16),
-                          child: Center(
-                            child: SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
+      body: Column(
+        children: [
+          // ✅ Stories strip ONLY on For You (Home) tab
+          if (!widget.showFollowingOnly)
+            StoriesStrip(onStoryPublished: refreshFeed),
+          if (!widget.showFollowingOnly)
+            Divider(height: 1, color: cs.outlineVariant),
+
+          // Feed
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: refreshFeed,
+              child: loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : allPosts.isEmpty
+                      ? ListView(
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          children: [
+                            const SizedBox(height: 140),
+                            Icon(
+                              widget.showFollowingOnly
+                                  ? Icons.people_outline
+                                  : Icons.article_outlined,
+                              size: 70,
+                              color: cs.onSurfaceVariant,
+                            ),
+                            const SizedBox(height: 12),
+                            Center(
+                              child: Text(
+                                widget.showFollowingOnly
+                                    ? (_followingIds.isEmpty
+                                        ? 'Follow people to see their posts here'
+                                        : 'No posts from people you follow yet')
+                                    : 'No posts yet.\nCreate the first post!',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: cs.onSurfaceVariant,
+                                ),
                               ),
                             ),
-                          ),
-                        );
-                      }
+                          ],
+                        )
+                      : ListView.builder(
+                          controller: _scrollController,
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding:
+                              const EdgeInsets.only(top: 8, bottom: 20),
+                          itemCount:
+                              allPosts.length + (loadingMore ? 1 : 0),
+                          itemBuilder: (context, index) {
+                            if (loadingMore &&
+                                index == allPosts.length) {
+                              return const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Center(
+                                  child: SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
 
-                      final post = allPosts[index];
-                      return PostCard(
-                        key: ValueKey(post['id']),
-                        post: post,
-                        onDeleted: refreshFeed,
-                      );
-                    },
-                  ),
+                            final post = allPosts[index];
+                            return PostCard(
+                              key: ValueKey(post['id']),
+                              post: post,
+                              onDeleted: refreshFeed,
+                            );
+                          },
+                        ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2925,8 +2912,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
                                                     BorderRadius.circular(20),
                                                 child: Padding(
                                                   padding:
-                                                      const EdgeInsets.all(
-                                                          4),
+                                                      const EdgeInsets.all(4),
                                                   child: Row(
                                                     mainAxisSize:
                                                         MainAxisSize.min,
