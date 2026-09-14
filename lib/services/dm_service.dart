@@ -268,7 +268,6 @@ class DmService {
     }
   }
 
-  // "Online" if last seen within last 60 seconds
   bool isOnline(DateTime? lastSeen) {
     if (lastSeen == null) return false;
     return DateTime.now().difference(lastSeen).inSeconds < 60;
@@ -296,20 +295,50 @@ class DmService {
   // MESSAGES
   // ============================================================
 
+  // ✅ FIXED: manual fetch instead of PostgREST self-join
   Future<List<Map<String, dynamic>>> getMessages(
     String conversationId,
   ) async {
+    // 1. Fetch all messages
     final res = await _supabase
         .from('dm_messages')
-        .select(
-          'id, conversation_id, sender_id, content, image_url, '
-          'created_at, deleted_at, reply_to_id, '
-          'reply_to:dm_messages!dm_messages_reply_to_id_fkey(id, content, image_url, sender_id, deleted_at)',
-        )
+        .select()
         .eq('conversation_id', conversationId)
         .order('created_at', ascending: true);
 
-    return List<Map<String, dynamic>>.from(res);
+    final list = List<Map<String, dynamic>>.from(res);
+    if (list.isEmpty) return list;
+
+    // 2. Collect all reply_to_ids
+    final replyIds = list
+        .map((m) => m['reply_to_id']?.toString())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+
+    if (replyIds.isEmpty) return list;
+
+    // 3. Fetch the replied-to messages in ONE query
+    final replyRes = await _supabase
+        .from('dm_messages')
+        .select('id, content, image_url, sender_id, deleted_at')
+        .inFilter('id', replyIds);
+
+    final replyMap = <String, Map<String, dynamic>>{};
+    for (final r in List<Map<String, dynamic>>.from(replyRes)) {
+      replyMap[r['id'].toString()] = r;
+    }
+
+    // 4. Attach reply_to data to each message
+    for (final m in list) {
+      final rid = m['reply_to_id']?.toString();
+      if (rid != null && replyMap.containsKey(rid)) {
+        m['reply_to'] = replyMap[rid];
+      }
+    }
+
+    return list;
   }
 
   Future<void> sendText({
