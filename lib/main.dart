@@ -316,7 +316,7 @@ class _MainShellState extends State<MainShell> {
 }
 
 // ============================================================
-// HOME TAB
+// HOME TAB — INFINITE SCROLL
 // ============================================================
 
 class HomeTab extends StatefulWidget {
@@ -327,12 +327,18 @@ class HomeTab extends StatefulWidget {
 }
 
 class _HomeTabState extends State<HomeTab> {
+  static const int _pageSize = 20;
+
+  final ScrollController _scrollController = ScrollController();
+
   List<Map<String, dynamic>> allPosts = [];
   List<Map<String, dynamic>> forMePosts = [];
 
   List<String> _followingIds = [];
 
   bool loading = true;
+  bool loadingMore = false;
+  bool hasMorePosts = true;
   bool showForYou = true;
   int unreadNotificationCount = 0;
 
@@ -345,19 +351,30 @@ class _HomeTabState extends State<HomeTab> {
     _loadAll();
     _subscribeToPosts();
     _subscribeToNotifications();
+    _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
     _postsChannel?.unsubscribe();
     _notificationsChannel?.unsubscribe();
     super.dispose();
   }
 
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    if (pos.pixels > pos.maxScrollExtent - 600) {
+      _loadMorePosts();
+    }
+  }
+
   Future<void> _loadAll() async {
     await Future.wait([
       _loadFollowingIds(),
-      _loadPosts(),
+      _loadPosts(reset: true),
       _loadUnreadNotificationCount(),
     ]);
     _rebuildForMe();
@@ -384,26 +401,63 @@ class _HomeTabState extends State<HomeTab> {
     }
   }
 
-  Future<void> _loadPosts() async {
+  Future<void> _loadPosts({bool reset = false}) async {
+    if (reset) {
+      hasMorePosts = true;
+      allPosts = [];
+    }
+
+    if (!hasMorePosts) return;
+
     try {
-      final response = await supabase
-          .from('posts')
-          .select(
+      var query = supabase.from('posts').select(
             'id, user_id, content, image_url, created_at, '
             'profiles(username, full_name, avatar_url)',
-          )
-          .order('created_at', ascending: false);
+          );
+
+      if (allPosts.isEmpty) {
+        query = query
+            .order('created_at', ascending: false)
+            .limit(_pageSize);
+      } else {
+        final oldest = allPosts.last['created_at']?.toString();
+        if (oldest == null) {
+          hasMorePosts = false;
+          return;
+        }
+        query = query
+            .lt('created_at', oldest)
+            .order('created_at', ascending: false)
+            .limit(_pageSize);
+      }
+
+      final response = await query;
+      final newPosts = List<Map<String, dynamic>>.from(response);
 
       if (!mounted) return;
       setState(() {
-        allPosts = List<Map<String, dynamic>>.from(response);
+        if (reset) {
+          allPosts = newPosts;
+        } else {
+          allPosts.addAll(newPosts);
+        }
+        hasMorePosts = newPosts.length == _pageSize;
       });
+      _rebuildForMe();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Could not load posts: $e')),
       );
     }
+  }
+
+  Future<void> _loadMorePosts() async {
+    if (loadingMore || !hasMorePosts || loading) return;
+    setState(() => loadingMore = true);
+    await _loadPosts();
+    if (!mounted) return;
+    setState(() => loadingMore = false);
   }
 
   void _rebuildForMe() {
@@ -499,7 +553,7 @@ class _HomeTabState extends State<HomeTab> {
 
   Future<void> refreshFeed() async {
     await _loadFollowingIds();
-    await _loadPosts();
+    await _loadPosts(reset: true);
     await _loadUnreadNotificationCount();
     _rebuildForMe();
     if (!mounted) return;
@@ -659,10 +713,30 @@ class _HomeTabState extends State<HomeTab> {
                           ],
                         )
                       : ListView.builder(
+                          controller:
+                              showForYou ? _scrollController : null,
                           physics: const AlwaysScrollableScrollPhysics(),
                           padding: const EdgeInsets.only(top: 8, bottom: 20),
-                          itemCount: visiblePosts.length,
+                          itemCount: visiblePosts.length +
+                              (showForYou && loadingMore ? 1 : 0),
                           itemBuilder: (context, index) {
+                            if (showForYou &&
+                                loadingMore &&
+                                index == visiblePosts.length) {
+                              return const Padding(
+                                padding: EdgeInsets.all(16),
+                                child: Center(
+                                  child: SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+
                             final post = visiblePosts[index];
                             return PostCard(
                               key: ValueKey(post['id']),
