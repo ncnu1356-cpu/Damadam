@@ -1,4 +1,3 @@
-
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -8,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'screens/notifications_screen.dart';
 import 'screens/search_screen.dart';
+import 'screens/online_users_screen.dart';
 import 'screens/dm_tab.dart';
 import 'screens/settings_screen.dart';
 import 'screens/saved_posts_screen.dart';
@@ -326,7 +326,7 @@ class _MainShellState extends State<MainShell> {
 }
 
 // ============================================================
-// HOME TAB (also used for "For Me")
+// HOME TAB
 // ============================================================
 
 class HomeTab extends StatefulWidget {
@@ -388,7 +388,6 @@ class _HomeTabState extends State<HomeTab> {
 
   Future<void> _loadAll() async {
     await _loadFollowingIds();
-
     await Future.wait([
       _loadPosts(reset: true),
       _loadUnreadNotificationCount(),
@@ -588,6 +587,17 @@ class _HomeTabState extends State<HomeTab> {
     await refreshFeed();
   }
 
+  Future<void> openOnlineUsers() async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const OnlineUsersScreen(),
+      ),
+    );
+    if (!mounted) return;
+    await refreshFeed();
+  }
+
   Future<void> openNotifications() async {
     await Navigator.push(
       context,
@@ -623,6 +633,11 @@ class _HomeTabState extends State<HomeTab> {
             tooltip: 'Search',
             onPressed: openSearch,
             icon: const Icon(Icons.search),
+          ),
+          IconButton(
+            tooltip: 'Online Users',
+            onPressed: openOnlineUsers,
+            icon: const Icon(Icons.public),
           ),
           Stack(
             children: [
@@ -1793,7 +1808,6 @@ class _PostCardState extends State<PostCard> {
   bool liked = false;
   bool likeLoading = false;
   int likeCount = 0;
-
   bool saved = false;
 
   late String _content;
