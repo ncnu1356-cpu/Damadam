@@ -22,7 +22,6 @@ class _DmTabState extends State<DmTab> {
 
   RealtimeChannel? _requestsChannel;
   RealtimeChannel? _conversationsChannel;
-  RealtimeChannel? _messagesChannel;
 
   String get _me => _supabase.auth.currentUser?.id ?? '';
 
@@ -37,7 +36,6 @@ class _DmTabState extends State<DmTab> {
   void dispose() {
     _requestsChannel?.unsubscribe();
     _conversationsChannel?.unsubscribe();
-    _messagesChannel?.unsubscribe();
     super.dispose();
   }
 
@@ -70,7 +68,6 @@ class _DmTabState extends State<DmTab> {
   void _subscribeRealtime() {
     if (_me.isEmpty) return;
 
-    // Watch for any request/conversation change involving me
     _requestsChannel = _supabase
         .channel('dm:requests:$_me')
         .onPostgresChanges(
@@ -98,24 +95,6 @@ class _DmTabState extends State<DmTab> {
             value: _me,
           ),
           callback: (_) => _loadAll(),
-        )
-        .subscribe();
-
-    // Watch for new messages in any of my conversations
-    // (fallback refresh — the ChatScreen subscribes in detail)
-    _messagesChannel = _supabase
-        .channel('dm:messages:$_me')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'dm_messages',
-          callback: (payload) {
-            final convId = payload.newRecord['conversation_id']?.toString();
-            if (convId == null) return;
-            if (conversations.any((c) => c['id']?.toString() == convId)) {
-              if (mounted) setState(() {});
-            }
-          },
         )
         .subscribe();
   }
@@ -153,7 +132,6 @@ class _DmTabState extends State<DmTab> {
     await _loadAll();
   }
 
-  // ✅ Leave / delete the conversation
   Future<void> _deleteConversation(Map<String, dynamic> conv) async {
     final other = _otherUser(conv);
     final name = _displayName(other);
@@ -215,18 +193,38 @@ class _DmTabState extends State<DmTab> {
     return 'Damadam User';
   }
 
-  // ✅ FIX 4: proper "1m ago" time format
+  // ✅ Online / last seen from raw ISO
+  String _onlineLabel(Map<String, dynamic> user) {
+    final raw = user['last_seen_at']?.toString();
+    if (raw == null) return '';
+    final dt = DateTime.tryParse(raw)?.toLocal();
+    if (dt == null) return '';
+    final diff = DateTime.now().difference(dt);
+    if (diff.inSeconds < 60) return 'online';
+    if (diff.inMinutes < 60) return 'last seen ${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return 'last seen ${diff.inHours}h ago';
+    if (diff.inDays < 7) return 'last seen ${diff.inDays}d ago';
+    return 'last seen ${dt.day}/${dt.month}/${dt.year}';
+  }
+
+  bool _isOnline(Map<String, dynamic> user) {
+    final raw = user['last_seen_at']?.toString();
+    if (raw == null) return false;
+    final dt = DateTime.tryParse(raw)?.toLocal();
+    if (dt == null) return false;
+    return DateTime.now().difference(dt).inSeconds < 60;
+  }
+
   String _timeAgo(String? iso) {
     if (iso == null) return '';
     final dt = DateTime.tryParse(iso)?.toLocal();
     if (dt == null) return '';
     final diff = DateTime.now().difference(dt);
-    if (diff.inSeconds < 60) return 'just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
-    if (diff.inDays < 30) return '${(diff.inDays / 7).floor()}w ago';
-    return '${dt.day}/${dt.month}/${dt.year}';
+    if (diff.inSeconds < 60) return 'now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
+    if (diff.inHours < 24) return '${diff.inHours}h';
+    if (diff.inDays < 7) return '${diff.inDays}d';
+    return '${dt.day}/${dt.month}';
   }
 
   @override
@@ -391,6 +389,8 @@ class _DmTabState extends State<DmTab> {
     final other = _otherUser(conv);
     final avatarUrl = other['avatar_url']?.toString() ?? '';
     final convId = conv['id'].toString();
+    final isOnline = _isOnline(other);
+    final onlineLabel = _onlineLabel(other);
 
     return FutureBuilder<Map<String, dynamic>?>(
       future: DmService().getLastMessage(convId),
@@ -401,24 +401,58 @@ class _DmTabState extends State<DmTab> {
         return Container(
           color: Colors.white,
           child: ListTile(
-            leading: CircleAvatar(
-              radius: 26,
-              backgroundColor: Colors.blueGrey.shade100,
-              backgroundImage:
-                  avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
-              child: avatarUrl.isEmpty
-                  ? const Icon(Icons.person, color: Colors.white)
-                  : null,
+            leading: Stack(
+              children: [
+                CircleAvatar(
+                  radius: 26,
+                  backgroundColor: Colors.blueGrey.shade100,
+                  backgroundImage:
+                      avatarUrl.isNotEmpty ? NetworkImage(avatarUrl) : null,
+                  child: avatarUrl.isEmpty
+                      ? const Icon(Icons.person, color: Colors.white)
+                      : null,
+                ),
+                // Online dot
+                if (isOnline)
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 14,
+                      height: 14,
+                      decoration: BoxDecoration(
+                        color: Colors.green,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             title: Text(
               _displayName(other),
               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
             ),
-            subtitle: Text(
-              preview,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (onlineLabel.isNotEmpty)
+                  Text(
+                    onlineLabel,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isOnline ? Colors.green.shade700 : Colors.grey.shade600,
+                      fontWeight: isOnline ? FontWeight.w600 : FontWeight.w400,
+                    ),
+                  ),
+                if (onlineLabel.isNotEmpty) const SizedBox(height: 2),
+                Text(
+                  preview,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                ),
+              ],
             ),
             trailing: Text(
               _timeAgo(last?['created_at']?.toString()),
