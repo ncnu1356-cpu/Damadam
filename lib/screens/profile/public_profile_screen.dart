@@ -4,6 +4,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/profile_service.dart';
 import '../../services/notification_service.dart';
 import '../../services/dm_service.dart';
+import '../../services/block_service.dart';
+import '../../services/report_service.dart';
 import '../chat_screen.dart';
 import '../follow_list_screen.dart';
 
@@ -24,6 +26,8 @@ class _PublicProfileScreenState
     extends State<PublicProfileScreen> {
   final ProfileService _profileService = ProfileService();
   final DmService _dm = DmService();
+  final BlockService _blockService = BlockService();
+  final ReportService _reportService = ReportService();
   final SupabaseClient _supabase = Supabase.instance.client;
 
   Map<String, dynamic>? profile;
@@ -42,14 +46,44 @@ class _PublicProfileScreenState
   bool _checkingDm = true;
   bool _sendingRequest = false;
 
+  // Block state
+  bool _iBlocked = false;
+  bool _theyBlockedMe = false;
+  bool _blockLoading = false;
+
   bool get isOwnProfile =>
       _supabase.auth.currentUser?.id == widget.userId;
+
+  bool get _isBlocked => _iBlocked || _theyBlockedMe;
 
   @override
   void initState() {
     super.initState();
     loadProfile();
     _loadDmState();
+    _loadBlockState();
+  }
+
+  Future<void> _loadBlockState() async {
+    if (isOwnProfile) {
+      setState(() {
+        _iBlocked = false;
+        _theyBlockedMe = false;
+      });
+      return;
+    }
+
+    try {
+      final mine = await _blockService.hasBlocked(widget.userId);
+      final theirs = await _blockService.isBlockedBy(widget.userId);
+      if (!mounted) return;
+      setState(() {
+        _iBlocked = mine;
+        _theyBlockedMe = theirs;
+      });
+    } catch (e) {
+      debugPrint('Block state error: $e');
+    }
   }
 
   Future<void> loadProfile() async {
@@ -59,9 +93,7 @@ class _PublicProfileScreenState
 
       final postsResponse = await _supabase
           .from('posts')
-          .select(
-            'id, user_id, content, image_url, created_at',
-          )
+          .select('id, user_id, content, image_url, created_at')
           .eq('user_id', widget.userId)
           .order('created_at', ascending: false);
 
@@ -101,8 +133,8 @@ class _PublicProfileScreenState
         loading = false;
       });
 
-      // Recheck DM after following changes
       await _loadDmState();
+      await _loadBlockState();
     } catch (e) {
       if (!mounted) return;
       setState(() => loading = false);
@@ -112,11 +144,8 @@ class _PublicProfileScreenState
     }
   }
 
-  // ============================================================
-  // DM STATE
-  // ============================================================
   Future<void> _loadDmState() async {
-    if (isOwnProfile) {
+    if (isOwnProfile || _isBlocked) {
       if (!mounted) return;
       setState(() => _checkingDm = false);
       return;
@@ -185,7 +214,6 @@ class _PublicProfileScreenState
 
     final result = Map<String, dynamic>.from(conv);
 
-    // Inject the other user's profile so ChatScreen can display it
     if (conv['requester_id']?.toString() == me) {
       result['recipient'] = profile;
     } else {
@@ -205,15 +233,9 @@ class _PublicProfileScreenState
     ).then((_) => _loadDmState());
   }
 
-  // ============================================================
-  // FOLLOW
-  // ============================================================
   Future<void> _sendFollowNotification() async {
     final currentUser = _supabase.auth.currentUser;
-    if (currentUser == null ||
-        currentUser.id == widget.userId) {
-      return;
-    }
+    if (currentUser == null || currentUser.id == widget.userId) return;
 
     try {
       final senderProfile = await _supabase
@@ -245,7 +267,7 @@ class _PublicProfileScreenState
   Future<void> toggleFollow() async {
     final currentUser = _supabase.auth.currentUser;
     if (currentUser == null) return;
-    if (isOwnProfile || followLoading) return;
+    if (isOwnProfile || followLoading || _isBlocked) return;
 
     setState(() => followLoading = true);
 
@@ -277,23 +299,18 @@ class _PublicProfileScreenState
         await _sendFollowNotification();
       }
 
-      // Reload DM eligibility after follow changes
       await _loadDmState();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not update follow status: $e'),
-        ),
+        SnackBar(content: Text('Could not update follow: $e')),
       );
     } finally {
       if (mounted) setState(() => followLoading = false);
     }
   }
 
-  Future<void> _openFollowList({
-    required bool showFollowers,
-  }) async {
+  Future<void> _openFollowList({required bool showFollowers}) async {
     await Navigator.push(
       context,
       MaterialPageRoute(
@@ -306,10 +323,146 @@ class _PublicProfileScreenState
     await loadProfile();
   }
 
-  String getString(dynamic value) {
-    if (value == null) return '';
-    return value.toString();
+  // ============================================================
+  // BLOCK
+  // ============================================================
+
+  Future<void> _toggleBlock() async {
+    setState(() => _blockLoading = true);
+
+    try {
+      if (_iBlocked) {
+        await _blockService.unblock(widget.userId);
+        if (!mounted) return;
+        setState(() => _iBlocked = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unblocked')),
+        );
+      } else {
+        final confirm = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Block this user?'),
+            content: const Text(
+              'They will not be able to message you or see your posts. Any follow/chat between you will be removed.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                style:
+                    FilledButton.styleFrom(backgroundColor: Colors.red),
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Block'),
+              ),
+            ],
+          ),
+        );
+
+        if (confirm != true) {
+          if (mounted) setState(() => _blockLoading = false);
+          return;
+        }
+
+        await _blockService.block(widget.userId);
+
+        // Clean up follow/chat
+        final me = _supabase.auth.currentUser?.id;
+        if (me != null) {
+          try {
+            await _supabase
+                .from('follows')
+                .delete()
+                .or('and(follower_id.eq.$me,following_id.eq.${widget.userId}),'
+                    'and(follower_id.eq.${widget.userId},following_id.eq.$me)');
+          } catch (_) {}
+
+          try {
+            final conv = await _dm.findConversation(widget.userId);
+            if (conv != null) {
+              await _dm
+                  .deleteConversation(conv['id'].toString());
+            }
+          } catch (_) {}
+        }
+
+        if (!mounted) return;
+        setState(() {
+          _iBlocked = true;
+          _conversation = null;
+          _canMessage = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('User blocked')),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Block failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _blockLoading = false);
+    }
   }
+
+  Future<void> _reportUser() async {
+    final reason = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Report this user',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 16,
+                ),
+              ),
+            ),
+            for (final r in const [
+              'Spam or scam',
+              'Nudity',
+              'Hate speech',
+              'Harassment',
+              'Impersonation',
+              'Other',
+            ])
+              ListTile(
+                title: Text(r),
+                onTap: () => Navigator.pop(context, r),
+              ),
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+    );
+
+    if (reason == null) return;
+
+    try {
+      await _reportService.reportUser(
+        userId: widget.userId,
+        reason: reason,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Report submitted — thanks')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Report failed: $e')),
+      );
+    }
+  }
+
+  String getString(dynamic v) => v?.toString() ?? '';
 
   @override
   Widget build(BuildContext context) {
@@ -322,26 +475,98 @@ class _PublicProfileScreenState
               : 'Profile',
         ),
         centerTitle: true,
+        actions: [
+          if (!isOwnProfile)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert),
+              onSelected: (value) {
+                if (value == 'block') _toggleBlock();
+                if (value == 'report') _reportUser();
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'block',
+                  enabled: !_blockLoading,
+                  child: Row(
+                    children: [
+                      Icon(
+                        _iBlocked ? Icons.lock_open : Icons.block,
+                        color: Colors.red,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(_iBlocked ? 'Unblock' : 'Block'),
+                    ],
+                  ),
+                ),
+                const PopupMenuItem(
+                  value: 'report',
+                  child: Row(
+                    children: [
+                      Icon(Icons.flag_outlined),
+                      SizedBox(width: 8),
+                      Text('Report'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+        ],
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
           : profile == null
               ? const Center(child: Text('Profile not found'))
-              : RefreshIndicator(
-                  onRefresh: () async {
-                    await loadProfile();
-                    await _loadDmState();
-                  },
-                  child: ListView(
-                    physics:
-                        const AlwaysScrollableScrollPhysics(),
-                    children: [
-                      _buildProfileHeader(),
-                      const SizedBox(height: 10),
-                      _buildPostsSection(),
-                    ],
-                  ),
-                ),
+              : _isBlocked
+                  ? _blockedBanner()
+                  : RefreshIndicator(
+                      onRefresh: loadProfile,
+                      child: ListView(
+                        physics:
+                            const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          _buildProfileHeader(),
+                          const SizedBox(height: 10),
+                          _buildPostsSection(),
+                        ],
+                      ),
+                    ),
+    );
+  }
+
+  Widget _blockedBanner() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.block,
+              size: 80,
+              color: Colors.grey.shade400,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              _iBlocked
+                  ? 'You blocked this user'
+                  : 'This user is unavailable',
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _iBlocked
+                  ? 'Unblock from the menu above to see their profile.'
+                  : '',
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -464,29 +689,23 @@ class _PublicProfileScreenState
                       child: SizedBox(
                         height: 45,
                         child: ElevatedButton(
-                          onPressed: followLoading
-                              ? null
-                              : toggleFollow,
+                          onPressed: followLoading ? null : toggleFollow,
                           style: ElevatedButton.styleFrom(
                             shape: RoundedRectangleBorder(
-                              borderRadius:
-                                  BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(10),
                             ),
                           ),
                           child: followLoading
                               ? const SizedBox(
                                   width: 20,
                                   height: 20,
-                                  child:
-                                      CircularProgressIndicator(
+                                  child: CircularProgressIndicator(
                                     strokeWidth: 2,
                                     color: Colors.white,
                                   ),
                                 )
                               : Text(
-                                  isFollowing
-                                      ? 'Following'
-                                      : 'Follow',
+                                  isFollowing ? 'Following' : 'Follow',
                                   style: const TextStyle(
                                     fontSize: 15,
                                     fontWeight: FontWeight.bold,
@@ -510,7 +729,7 @@ class _PublicProfileScreenState
   }
 
   bool _shouldShowDmButton() {
-    if (_checkingDm) return false;
+    if (_checkingDm || _isBlocked) return false;
     if (_conversation != null) return true;
     return _canMessage;
   }
@@ -518,7 +737,6 @@ class _PublicProfileScreenState
   Widget _buildDmButton() {
     final me = _supabase.auth.currentUser?.id;
 
-    // No conversation yet, but mutual follow → Send request
     if (_conversation == null) {
       if (!_canMessage) return const SizedBox.shrink();
 
@@ -553,7 +771,6 @@ class _PublicProfileScreenState
     final requesterId = _conversation!['requester_id']?.toString();
     final isRequester = requesterId == me;
 
-    // Pending — sent by me
     if (status == 'pending' && isRequester) {
       return SizedBox(
         height: 45,
@@ -576,7 +793,6 @@ class _PublicProfileScreenState
       );
     }
 
-    // Pending — received (accept inline)
     if (status == 'pending' && !isRequester) {
       return SizedBox(
         height: 45,
@@ -608,7 +824,6 @@ class _PublicProfileScreenState
       );
     }
 
-    // Accepted — open chat
     if (status == 'accepted') {
       return SizedBox(
         height: 45,
@@ -665,10 +880,7 @@ class _PublicProfileScreenState
       onTap: onTap,
       borderRadius: BorderRadius.circular(10),
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 4,
-          vertical: 4,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
         child: content,
       ),
     );
