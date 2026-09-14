@@ -410,28 +410,29 @@ class _HomeTabState extends State<HomeTab> {
     if (!hasMorePosts) return;
 
     try {
-      var query = supabase.from('posts').select(
-            'id, user_id, content, image_url, created_at, '
-            'profiles(username, full_name, avatar_url)',
-          );
+      final oldest = allPosts.isEmpty
+          ? null
+          : allPosts.last['created_at']?.toString();
 
-      if (allPosts.isEmpty) {
-        query = query
-            .order('created_at', ascending: false)
-            .limit(_pageSize);
-      } else {
-        final oldest = allPosts.last['created_at']?.toString();
-        if (oldest == null) {
-          hasMorePosts = false;
-          return;
-        }
-        query = query
-            .lt('created_at', oldest)
-            .order('created_at', ascending: false)
-            .limit(_pageSize);
-      }
+      final response = await (oldest == null
+          ? supabase
+              .from('posts')
+              .select(
+                'id, user_id, content, image_url, created_at, '
+                'profiles(username, full_name, avatar_url)',
+              )
+              .order('created_at', ascending: false)
+              .limit(_pageSize)
+          : supabase
+              .from('posts')
+              .select(
+                'id, user_id, content, image_url, created_at, '
+                'profiles(username, full_name, avatar_url)',
+              )
+              .lt('created_at', oldest)
+              .order('created_at', ascending: false)
+              .limit(_pageSize));
 
-      final response = await query;
       final newPosts = List<Map<String, dynamic>>.from(response);
 
       if (!mounted) return;
@@ -779,7 +780,7 @@ class _HomeTabState extends State<HomeTab> {
 }
 
 // ============================================================
-// MORE TAB — with Dark Mode toggle
+// MORE TAB
 // ============================================================
 
 class MoreTab extends StatelessWidget {
@@ -897,7 +898,6 @@ class MoreTab extends StatelessWidget {
 
               _sectionHeader('App', cs),
 
-              // ✅ DARK MODE TOGGLE
               SwitchListTile(
                 tileColor: cs.surface,
                 secondary: Icon(
