@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -26,7 +27,15 @@ class _ChatScreenState extends State<ChatScreen> {
   bool loading = true;
   bool sending = false;
 
+  // ✅ Reply target
+  Map<String, dynamic>? _replyTo;
+
+  // ✅ Online status
+  DateTime? _otherLastSeen;
+  Timer? _presenceTimer;
+
   RealtimeChannel? _channel;
+  RealtimeChannel? _profileChannel;
 
   String get _me => _supabase.auth.currentUser?.id ?? '';
 
@@ -39,16 +48,27 @@ class _ChatScreenState extends State<ChatScreen> {
     return <String, dynamic>{};
   }
 
+  String get _otherUserId => _otherUser['id']?.toString() ?? '';
+
   @override
   void initState() {
     super.initState();
     _load();
+    _loadLastSeen();
     _subscribe();
+
+    // Refresh online status every 30s
+    _presenceTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _loadLastSeen(),
+    );
   }
 
   @override
   void dispose() {
     _channel?.unsubscribe();
+    _profileChannel?.unsubscribe();
+    _presenceTimer?.cancel();
     _controller.dispose();
     _scroll.dispose();
     super.dispose();
@@ -70,6 +90,13 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  Future<void> _loadLastSeen() async {
+    if (_otherUserId.isEmpty) return;
+    final dt = await _dm.getLastSeen(_otherUserId);
+    if (!mounted) return;
+    setState(() => _otherLastSeen = dt);
+  }
+
   void _subscribe() {
     _channel = _supabase
         .channel('dm:conv:$_conversationId')
@@ -86,6 +113,22 @@ class _ChatScreenState extends State<ChatScreen> {
             if (!mounted) return;
             _load();
           },
+        )
+        .subscribe();
+
+    // Watch other user's profile for last_seen changes
+    _profileChannel = _supabase
+        .channel('profile:$_otherUserId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'profiles',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: _otherUserId,
+          ),
+          callback: (_) => _loadLastSeen(),
         )
         .subscribe();
   }
@@ -106,11 +149,19 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _controller.text.trim();
     if (text.isEmpty || sending) return;
 
+    final replyId = _replyTo?['id']?.toString();
+
     setState(() => sending = true);
     _controller.clear();
 
     try {
-      await _dm.sendText(conversationId: _conversationId, text: text);
+      await _dm.sendText(
+        conversationId: _conversationId,
+        text: text,
+        replyToId: replyId,
+      );
+      if (!mounted) return;
+      setState(() => _replyTo = null);
       await _load();
     } catch (e) {
       _show('Send failed: $e');
@@ -127,6 +178,8 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       if (x == null) return;
 
+      final replyId = _replyTo?['id']?.toString();
+
       setState(() => sending = true);
 
       final bytes = await File(x.path).readAsBytes();
@@ -141,7 +194,14 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (url == null) throw Exception('Upload failed');
 
-      await _dm.sendImage(conversationId: _conversationId, imageUrl: url);
+      await _dm.sendImage(
+        conversationId: _conversationId,
+        imageUrl: url,
+        replyToId: replyId,
+      );
+
+      if (!mounted) return;
+      setState(() => _replyTo = null);
       await _load();
     } catch (e) {
       _show('Image failed: $e');
@@ -150,7 +210,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  // ✅ FIX 3: delete with proper feedback
   Future<void> _deleteMessage(Map<String, dynamic> msg) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -198,7 +257,6 @@ class _ChatScreenState extends State<ChatScreen> {
     return 'Damadam User';
   }
 
-  // ✅ FIX 4: proper time format
   String _timeLabel(String? iso) {
     if (iso == null) return '';
     final dt = DateTime.tryParse(iso)?.toLocal();
@@ -217,10 +275,17 @@ class _ChatScreenState extends State<ChatScreen> {
     return '${dt.day}/${dt.month}/${dt.year}';
   }
 
+  String get _onlineStatus {
+    if (_otherLastSeen == null) return '';
+    if (_dm.isOnline(_otherLastSeen)) return 'online';
+    return _dm.formatLastSeen(_otherLastSeen);
+  }
+
   @override
   Widget build(BuildContext context) {
     final other = _otherUser;
     final avatar = other['avatar_url']?.toString() ?? '';
+    final isOnline = _dm.isOnline(_otherLastSeen);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF2F3F7),
@@ -231,20 +296,59 @@ class _ChatScreenState extends State<ChatScreen> {
         titleSpacing: 0,
         title: Row(
           children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundColor: Colors.blueGrey.shade100,
-              backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
-              child: avatar.isEmpty
-                  ? const Icon(Icons.person, size: 18, color: Colors.white)
-                  : null,
+            Stack(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: Colors.blueGrey.shade100,
+                  backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
+                  child: avatar.isEmpty
+                      ? const Icon(Icons.person, size: 18, color: Colors.white)
+                      : null,
+                ),
+                if (isOnline)
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: Container(
+                      width: 11,
+                      height: 11,
+                      decoration: BoxDecoration(
+                        color: Colors.green,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 1.5),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(
-                _displayName(other),
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
-                overflow: TextOverflow.ellipsis,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    _displayName(other),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (_onlineStatus.isNotEmpty)
+                    Text(
+                      _onlineStatus,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isOnline
+                            ? Colors.green.shade700
+                            : Colors.grey.shade600,
+                        fontWeight:
+                            isOnline ? FontWeight.w600 : FontWeight.w400,
+                      ),
+                    ),
+                ],
               ),
             ),
           ],
@@ -268,6 +372,7 @@ class _ChatScreenState extends State<ChatScreen> {
                         },
                       ),
           ),
+          if (_replyTo != null) _replyPreviewBar(),
           _inputBar(),
         ],
       ),
@@ -290,11 +395,66 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             const SizedBox(height: 6),
             const Text(
-              'Long-press your own message to delete it',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
+              'Long-press your message to delete it\nSwipe a message right to reply',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: Colors.grey, height: 1.5),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // ✅ Reply preview bar (shows above input)
+  Widget _replyPreviewBar() {
+    final repliedToMe = _replyTo!['sender_id']?.toString() == _me;
+    final previewText = _replyTo!['deleted_at'] != null
+        ? 'This message was deleted'
+        : (_replyTo!['content']?.toString().trim().isNotEmpty == true
+            ? _replyTo!['content'].toString().trim()
+            : '📷 Photo');
+
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primary,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  repliedToMe ? 'You' : _displayName(_otherUser),
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  previewText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 20),
+            onPressed: () => setState(() => _replyTo = null),
+          ),
+        ],
       ),
     );
   }
@@ -305,9 +465,140 @@ class _ChatScreenState extends State<ChatScreen> {
     final imageUrl = msg['image_url']?.toString() ?? '';
     final time = _timeLabel(msg['created_at']?.toString());
 
+    // ✅ Reply preview inside bubble
+    final replied = msg['reply_to'];
+    final hasReply = replied is Map<String, dynamic>;
+
     final bubbleColor = isMe ? Colors.blue.shade500 : Colors.white;
     final textColor = isMe ? Colors.white : Colors.black87;
 
+    Widget bubble = Container(
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.of(context).size.width * 0.75,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: bubbleColor,
+        borderRadius: BorderRadius.only(
+          topLeft: const Radius.circular(16),
+          topRight: const Radius.circular(16),
+          bottomLeft: Radius.circular(isMe ? 16 : 4),
+          bottomRight: Radius.circular(isMe ? 4 : 16),
+        ),
+        boxShadow: [
+          BoxShadow(color: Colors.black.withAlpha(10), blurRadius: 4),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ✅ Reply preview inside bubble
+          if (hasReply && !deleted)
+            Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: isMe ? Colors.white.withAlpha(60) : Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(8),
+                border: Border(
+                  left: BorderSide(
+                    color: isMe ? Colors.white : Colors.blue.shade400,
+                    width: 3,
+                  ),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    replied['sender_id']?.toString() == _me
+                        ? 'You'
+                        : _displayName(_otherUser),
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: isMe ? Colors.white : Colors.blue.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    replied['deleted_at'] != null
+                        ? 'This message was deleted'
+                        : (replied['content']?.toString().trim().isNotEmpty == true
+                            ? replied['content'].toString().trim()
+                            : '📷 Photo'),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isMe ? Colors.white70 : Colors.grey.shade700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          if (deleted)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.block,
+                    size: 14, color: isMe ? Colors.white70 : Colors.grey),
+                const SizedBox(width: 6),
+                Text(
+                  'This message was deleted',
+                  style: TextStyle(
+                    fontStyle: FontStyle.italic,
+                    color: isMe ? Colors.white70 : Colors.grey.shade600,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            )
+          else ...[
+            if (content.isNotEmpty)
+              Text(
+                content,
+                style: TextStyle(color: textColor, fontSize: 15, height: 1.35),
+              ),
+            if (imageUrl.isNotEmpty) ...[
+              if (content.isNotEmpty) const SizedBox(height: 6),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.network(
+                  imageUrl,
+                  width: 220,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, progress) {
+                    if (progress == null) return child;
+                    return const SizedBox(
+                      height: 140,
+                      child: Center(child: CircularProgressIndicator()),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) => const SizedBox(
+                    height: 120,
+                    child: Center(
+                      child: Icon(Icons.broken_image, color: Colors.white70),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+          const SizedBox(height: 4),
+          Text(
+            time,
+            style: TextStyle(
+              color: isMe ? Colors.white70 : Colors.grey.shade500,
+              fontSize: 10,
+            ),
+          ),
+        ],
+      ),
+    );
+
+    // ✅ Swipe-to-reply wrapper
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -315,89 +606,29 @@ class _ChatScreenState extends State<ChatScreen> {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Flexible(
-            child: GestureDetector(
-              onLongPress: isMe && !deleted ? () => _deleteMessage(msg) : null,
-              child: Container(
-                constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(context).size.width * 0.75,
+            child: Dismissible(
+              key: ValueKey('swipe_${msg['id']}'),
+              direction: DismissDirection.startToEnd,
+              confirmDismiss: (_) async {
+                if (!deleted) {
+                  setState(() => _replyTo = msg);
+                }
+                return false; // don't dismiss
+              },
+              background: Container(
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.only(left: 12),
+                child: Icon(
+                  Icons.reply,
+                  color: Colors.blue.shade400,
+                  size: 24,
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                decoration: BoxDecoration(
-                  color: bubbleColor,
-                  borderRadius: BorderRadius.only(
-                    topLeft: const Radius.circular(16),
-                    topRight: const Radius.circular(16),
-                    bottomLeft: Radius.circular(isMe ? 16 : 4),
-                    bottomRight: Radius.circular(isMe ? 4 : 16),
-                  ),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withAlpha(10), blurRadius: 4),
-                  ],
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    if (deleted)
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.block,
-                              size: 14,
-                              color: isMe ? Colors.white70 : Colors.grey),
-                          const SizedBox(width: 6),
-                          Text(
-                            'This message was deleted',
-                            style: TextStyle(
-                              fontStyle: FontStyle.italic,
-                              color: isMe ? Colors.white70 : Colors.grey.shade600,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                      )
-                    else ...[
-                      if (content.isNotEmpty)
-                        Text(
-                          content,
-                          style: TextStyle(
-                              color: textColor, fontSize: 15, height: 1.35),
-                        ),
-                      if (imageUrl.isNotEmpty) ...[
-                        if (content.isNotEmpty) const SizedBox(height: 6),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(10),
-                          child: Image.network(
-                            imageUrl,
-                            width: 220,
-                            fit: BoxFit.cover,
-                            loadingBuilder: (context, child, progress) {
-                              if (progress == null) return child;
-                              return const SizedBox(
-                                height: 140,
-                                child: Center(child: CircularProgressIndicator()),
-                              );
-                            },
-                            errorBuilder: (context, error, stackTrace) =>
-                                const SizedBox(
-                              height: 120,
-                              child: Center(
-                                child: Icon(Icons.broken_image, color: Colors.white70),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                    const SizedBox(height: 4),
-                    Text(
-                      time,
-                      style: TextStyle(
-                        color: isMe ? Colors.white70 : Colors.grey.shade500,
-                        fontSize: 10,
-                      ),
-                    ),
-                  ],
-                ),
+              ),
+              child: GestureDetector(
+                onLongPress: isMe && !deleted
+                    ? () => _deleteMessage(msg)
+                    : null,
+                child: bubble,
               ),
             ),
           ),
