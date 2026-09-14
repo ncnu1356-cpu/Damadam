@@ -10,6 +10,10 @@ class DmService {
 
   String? get currentUserId => _supabase.auth.currentUser?.id;
 
+  // ============================================================
+  // REQUESTS
+  // ============================================================
+
   Future<bool> canMessage(String otherUserId) async {
     final me = currentUserId;
     if (me == null || me == otherUserId) return false;
@@ -115,13 +119,9 @@ class DmService {
         'message': '$displayName sent you a 1on1 request',
         'is_read': false,
       });
-
-      if (kDebugMode) {
-        debugPrint('✅ DM request notification sent');
-      }
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('❌ DM request notification failed: $e');
+        debugPrint('DM request notification failed: $e');
       }
     }
   }
@@ -149,7 +149,7 @@ class DmService {
 
       final profilesRes = await _supabase
           .from('profiles')
-          .select('id, username, full_name, avatar_url')
+          .select('id, username, full_name, avatar_url, last_seen_at')
           .inFilter('id', ids);
 
       final profilesMap = <String, Map<String, dynamic>>{};
@@ -182,6 +182,10 @@ class DmService {
     );
   }
 
+  // ============================================================
+  // CONVERSATIONS
+  // ============================================================
+
   Future<List<Map<String, dynamic>>> getAcceptedConversations() async {
     final me = currentUserId;
     if (me == null) return [];
@@ -206,7 +210,7 @@ class DmService {
 
       final profilesRes = await _supabase
           .from('profiles')
-          .select('id, username, full_name, avatar_url')
+          .select('id, username, full_name, avatar_url, last_seen_at')
           .inFilter('id', ids.toList());
 
       final profilesMap = <String, Map<String, dynamic>>{};
@@ -244,12 +248,64 @@ class DmService {
     }
   }
 
+  // ============================================================
+  // ONLINE / LAST SEEN
+  // ============================================================
+
+  Future<DateTime?> getLastSeen(String userId) async {
+    try {
+      final res = await _supabase
+          .from('profiles')
+          .select('last_seen_at')
+          .eq('id', userId)
+          .maybeSingle();
+
+      final raw = res?['last_seen_at']?.toString();
+      if (raw == null) return null;
+      return DateTime.tryParse(raw)?.toLocal();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // "Online" if last seen within last 60 seconds
+  bool isOnline(DateTime? lastSeen) {
+    if (lastSeen == null) return false;
+    return DateTime.now().difference(lastSeen).inSeconds < 60;
+  }
+
+  String formatLastSeen(DateTime? lastSeen) {
+    if (lastSeen == null) return 'offline';
+    if (isOnline(lastSeen)) return 'online';
+
+    final diff = DateTime.now().difference(lastSeen);
+    if (diff.inMinutes < 1) return 'last seen just now';
+    if (diff.inMinutes < 60) {
+      return 'last seen ${diff.inMinutes}m ago';
+    }
+    if (diff.inHours < 24) {
+      return 'last seen ${diff.inHours}h ago';
+    }
+    if (diff.inDays < 7) {
+      return 'last seen ${diff.inDays}d ago';
+    }
+    return 'last seen ${lastSeen.day}/${lastSeen.month}/${lastSeen.year}';
+  }
+
+  // ============================================================
+  // MESSAGES
+  // ============================================================
+
   Future<List<Map<String, dynamic>>> getMessages(
     String conversationId,
   ) async {
     final res = await _supabase
         .from('dm_messages')
-        .select()
+        .select(
+          'id, conversation_id, sender_id, content, image_url, '
+          'created_at, deleted_at, reply_to_id, '
+          'reply_to:dm_messages!dm_messages_reply_to_id_fkey(id, content, image_url, sender_id, deleted_at)',
+        )
         .eq('conversation_id', conversationId)
         .order('created_at', ascending: true);
 
@@ -259,12 +315,14 @@ class DmService {
   Future<void> sendText({
     required String conversationId,
     required String text,
+    String? replyToId,
   }) async {
     await _supabase.rpc(
       'send_dm_message',
       params: {
         'conversation_id': conversationId,
         'message_content': text,
+        'reply_to': replyToId,
       },
     );
   }
@@ -297,12 +355,14 @@ class DmService {
   Future<void> sendImage({
     required String conversationId,
     required String imageUrl,
+    String? replyToId,
   }) async {
     await _supabase.rpc(
       'send_dm_message',
       params: {
         'conversation_id': conversationId,
         'message_image_url': imageUrl,
+        'reply_to': replyToId,
       },
     );
   }
