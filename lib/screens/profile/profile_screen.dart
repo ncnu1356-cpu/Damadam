@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -103,9 +102,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  Future<void> _openFollowList({
-    required bool showFollowers,
-  }) async {
+  Future<void> _openFollowList({required bool showFollowers}) async {
     final user = _supabase.auth.currentUser;
     if (user == null) return;
 
@@ -164,6 +161,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
     if (loading) {
       return const Scaffold(
         body: Center(child: CircularProgressIndicator()),
@@ -178,7 +177,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final coverUrl = profile?['cover_url']?.toString();
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
+      backgroundColor: cs.surfaceContainerLowest,
       appBar: AppBar(
         title: const Text(
           'My Profile',
@@ -187,7 +186,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         centerTitle: true,
         elevation: 0,
         actions: [
-          // ✅ Settings icon
           IconButton(
             tooltip: 'Settings',
             onPressed: openSettings,
@@ -201,6 +199,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             children: [
+              // ==================================================
+              // COVER + AVATAR
+              // ==================================================
               SizedBox(
                 height: 210,
                 width: double.infinity,
@@ -219,15 +220,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               )
                             : null,
                       ),
-                      child: (coverUrl == null || coverUrl.isEmpty)
-                          ? const Center(
-                              child: Icon(
-                                Icons.photo_camera_back,
-                                size: 50,
-                                color: Colors.white70,
-                              ),
-                            )
-                          : null,
+                      child:
+                          (coverUrl == null || coverUrl.isEmpty)
+                              ? const Center(
+                                  child: Icon(
+                                    Icons.photo_camera_back,
+                                    size: 50,
+                                    color: Colors.white70,
+                                  ),
+                                )
+                              : null,
                     ),
                     Positioned(
                       left: 20,
@@ -235,7 +237,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: cs.surface,
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
@@ -270,9 +272,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         icon: const Icon(Icons.edit, size: 18),
                         label: const Text('Edit Profile'),
                         style: OutlinedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.black87,
-                          side: const BorderSide(color: Colors.black12),
+                          backgroundColor: cs.surface,
+                          foregroundColor: cs.onSurface,
+                          side: BorderSide(color: cs.outlineVariant),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(20),
                           ),
@@ -282,6 +284,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
               ),
+
+              // ==================================================
+              // PROFILE INFO
+              // ==================================================
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Column(
@@ -304,7 +310,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         '@$username',
                         style: TextStyle(
                           fontSize: 15,
-                          color: Colors.grey.shade600,
+                          color: cs.onSurfaceVariant,
                         ),
                       ),
                     ),
@@ -322,14 +328,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ],
                     const SizedBox(height: 20),
+
+                    // STATS
                     Container(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: cs.surface,
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        mainAxisAlignment:
+                            MainAxisAlignment.spaceAround,
                         children: [
                           _ProfileStat(
                             number: '${myPosts.length}',
@@ -351,6 +360,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                     const SizedBox(height: 20),
+
                     Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
@@ -358,17 +368,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
-                          color: Colors.grey.shade900,
+                          color: cs.onSurface,
                         ),
                       ),
                     ),
                     const SizedBox(height: 12),
+
                     if (myPosts.isEmpty)
                       Container(
                         width: double.infinity,
-                        padding: const EdgeInsets.symmetric(vertical: 45),
+                        padding:
+                            const EdgeInsets.symmetric(vertical: 45),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: cs.surface,
                           borderRadius: BorderRadius.circular(16),
                         ),
                         child: Column(
@@ -376,13 +388,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             Icon(
                               Icons.article_outlined,
                               size: 50,
-                              color: Colors.grey.shade400,
+                              color: cs.onSurfaceVariant,
                             ),
                             const SizedBox(height: 10),
                             Text(
                               'No posts yet',
                               style: TextStyle(
-                                color: Colors.grey.shade600,
+                                color: cs.onSurfaceVariant,
                                 fontSize: 15,
                               ),
                             ),
@@ -404,7 +416,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             margin: const EdgeInsets.only(bottom: 12),
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: cs.surface,
                               borderRadius: BorderRadius.circular(16),
                             ),
                             child: Column(
@@ -421,9 +433,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                             NetworkImage(avatarUrl),
                                       )
                                     else
-                                      const CircleAvatar(
+                                      CircleAvatar(
                                         radius: 18,
-                                        child: Icon(Icons.person),
+                                        backgroundColor:
+                                            Colors.blueGrey.shade100,
+                                        child: const Icon(
+                                          Icons.person,
+                                          size: 18,
+                                          color: Colors.white,
+                                        ),
                                       ),
                                     const SizedBox(width: 8),
                                     Expanded(
@@ -442,7 +460,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       time,
                                       style: TextStyle(
                                         fontSize: 12,
-                                        color: Colors.grey.shade600,
+                                        color: cs.onSurfaceVariant,
                                       ),
                                     ),
                                   ],
@@ -471,7 +489,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                               stackTrace) =>
                                           Container(
                                         height: 200,
-                                        color: Colors.grey.shade200,
+                                        color:
+                                            cs.surfaceContainerHighest,
                                         child: const Center(
                                           child: Icon(
                                             Icons.broken_image,
@@ -524,7 +543,7 @@ class _ProfileStat extends StatelessWidget {
         Text(
           label,
           style: TextStyle(
-            color: Colors.grey.shade600,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
             fontSize: 13,
           ),
         ),
