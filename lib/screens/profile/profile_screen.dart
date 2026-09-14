@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../services/profile_service.dart';
 import '../follow_list_screen.dart';
+import '../settings_screen.dart';
 import 'edit_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -47,9 +48,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final data = await _profileService.getMyProfile();
       if (!mounted) return;
-      setState(() {
-        profile = data;
-      });
+      setState(() => profile = data);
     } catch (e) {
       if (!mounted) return;
       _show('Profile load error: $e');
@@ -77,10 +76,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // ============================================================
-  // FOLLOWERS / FOLLOWING COUNTS
-  // ============================================================
-
   Future<void> loadFollowCounts() async {
     final user = _supabase.auth.currentUser;
     if (user == null) return;
@@ -107,10 +102,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // ============================================================
-  // OPEN FOLLOWERS / FOLLOWING LIST
-  // ============================================================
-
   Future<void> _openFollowList({
     required bool showFollowers,
   }) async {
@@ -127,7 +118,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
 
-    // Refresh counts after we return (user may have removed someone)
     await loadFollowCounts();
   }
 
@@ -148,6 +138,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (!mounted) return;
     await loadAll();
+  }
+
+  void openSettings() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const SettingsScreen(),
+      ),
+    );
   }
 
   String _timeAgo(String? iso) {
@@ -186,6 +185,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         centerTitle: true,
         elevation: 0,
+        actions: [
+          // ✅ Settings icon
+          IconButton(
+            tooltip: 'Settings',
+            onPressed: openSettings,
+            icon: const Icon(Icons.settings_outlined),
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: loadAll,
@@ -193,9 +200,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             children: [
-              // ============================================
-              // COVER + AVATAR + EDIT
-              // ============================================
               SizedBox(
                 height: 210,
                 width: double.infinity,
@@ -277,10 +281,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 ),
               ),
-
-              // ============================================
-              // PROFILE INFO
-              // ============================================
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Column(
@@ -321,8 +321,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ],
                     const SizedBox(height: 20),
-
-                    // STATS — followers/following now tappable
                     Container(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       decoration: BoxDecoration(
@@ -330,8 +328,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Row(
-                        mainAxisAlignment:
-                            MainAxisAlignment.spaceAround,
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
                           _ProfileStat(
                             number: '${myPosts.length}',
@@ -353,7 +350,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                     const SizedBox(height: 20),
-
                     Align(
                       alignment: Alignment.centerLeft,
                       child: Text(
@@ -366,12 +362,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ),
                     ),
                     const SizedBox(height: 12),
-
                     if (myPosts.isEmpty)
                       Container(
                         width: double.infinity,
-                        padding:
-                            const EdgeInsets.symmetric(vertical: 45),
+                        padding: const EdgeInsets.symmetric(vertical: 45),
                         decoration: BoxDecoration(
                           color: Colors.white,
                           borderRadius: BorderRadius.circular(16),
@@ -406,13 +400,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           );
 
                           return Container(
-                            margin:
-                                const EdgeInsets.only(bottom: 12),
+                            margin: const EdgeInsets.only(bottom: 12),
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
                               color: Colors.white,
-                              borderRadius:
-                                  BorderRadius.circular(16),
+                              borderRadius: BorderRadius.circular(16),
                             ),
                             child: Column(
                               crossAxisAlignment:
@@ -493,7 +485,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           );
                         }).toList(),
                       ),
-
                     const SizedBox(height: 30),
                   ],
                 ),
@@ -505,10 +496,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 }
-
-// ============================================================
-// PROFILE STAT WIDGET (tappable when onTap is provided)
-// ============================================================
 
 class _ProfileStat extends StatelessWidget {
   final String number;
