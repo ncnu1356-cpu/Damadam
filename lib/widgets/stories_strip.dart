@@ -16,7 +16,9 @@ class StoriesStrip extends StatefulWidget {
 class _StoriesStripState extends State<StoriesStrip> {
   final StoryService _storyService = StoryService();
 
-  List<Map<String, dynamic>> groups = [];
+  // ✅ My group separate
+  Map<String, dynamic>? myGroup;
+  List<Map<String, dynamic>> otherGroups = [];
   bool loading = true;
 
   @override
@@ -27,9 +29,22 @@ class _StoriesStripState extends State<StoriesStrip> {
 
   Future<void> _load() async {
     final data = await _storyService.getStoriesGroupedByUser();
+
+    Map<String, dynamic>? mine;
+    final others = <Map<String, dynamic>>[];
+
+    for (final g in data) {
+      if (g['is_me'] == true) {
+        mine = g;
+      } else {
+        others.add(g);
+      }
+    }
+
     if (!mounted) return;
     setState(() {
-      groups = data;
+      myGroup = mine;
+      otherGroups = others;
       loading = false;
     });
   }
@@ -47,10 +62,30 @@ class _StoriesStripState extends State<StoriesStrip> {
     }
   }
 
-  void _openViewer(int index) {
-    final group = groups[index];
+  void _openMyStory() {
+    final g = myGroup;
+    if (g == null) {
+      _openAddStory();
+      return;
+    }
     final stories =
-        List<Map<String, dynamic>>.from(group['stories'] as List);
+        List<Map<String, dynamic>>.from(g['stories'] as List);
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => StoryViewerScreen(
+          stories: stories,
+          initialIndex: 0,
+        ),
+      ),
+    ).then((_) => _load());
+  }
+
+  void _openOtherStory(int index) {
+    final g = otherGroups[index];
+    final stories =
+        List<Map<String, dynamic>>.from(g['stories'] as List);
 
     Navigator.push(
       context,
@@ -73,6 +108,7 @@ class _StoriesStripState extends State<StoriesStrip> {
     }
 
     final cs = Theme.of(context).colorScheme;
+    final hasMyStory = myGroup != null;
 
     return Container(
       height: 108,
@@ -80,28 +116,39 @@ class _StoriesStripState extends State<StoriesStrip> {
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        itemCount: groups.length + 1,
+        itemCount: otherGroups.length + 1,
         itemBuilder: (context, index) {
-          if (index == 0) return _addStoryTile(cs);
-          return _storyTile(groups[index - 1], cs);
+          if (index == 0) {
+            return _myStoryTile(cs, hasMyStory);
+          }
+          return _storyTile(otherGroups[index - 1], cs, index - 1);
         },
       ),
     );
   }
 
-  Widget _addStoryTile(ColorScheme cs) {
-    final myIndex = groups.indexWhere((g) => g['is_me'] == true);
-    final hasMyStory = myIndex >= 0;
+  // ✅ My story tile — shows view + add
+  Widget _myStoryTile(ColorScheme cs, bool hasMyStory) {
+    final profile = myGroup?['profile'];
+    String avatarUrl = '';
+    if (profile is Map<String, dynamic>) {
+      avatarUrl = profile['avatar_url']?.toString() ?? '';
+    }
 
-    return GestureDetector(
-      onTap: hasMyStory ? () => _openViewer(myIndex) : _openAddStory,
-      child: Padding(
-        padding: const EdgeInsets.only(right: 12),
-        child: Column(
-          children: [
-            Stack(
-              children: [
-                Container(
+    final storyCount = myGroup != null
+        ? (myGroup!['stories'] as List).length
+        : 0;
+
+    return Padding(
+      padding: const EdgeInsets.only(right: 14),
+      child: Column(
+        children: [
+          Stack(
+            children: [
+              // Tappable avatar area
+              GestureDetector(
+                onTap: _openMyStory,
+                child: Container(
                   width: 64,
                   height: 64,
                   decoration: BoxDecoration(
@@ -112,19 +159,26 @@ class _StoriesStripState extends State<StoriesStrip> {
                     ),
                   ),
                   child: ClipOval(
-                    child: Container(
-                      color: cs.surfaceContainerHighest,
-                      child: Icon(
-                        Icons.person,
-                        size: 32,
-                        color: cs.onSurfaceVariant,
-                      ),
-                    ),
+                    child: avatarUrl.isNotEmpty
+                        ? Image.network(avatarUrl, fit: BoxFit.cover)
+                        : Container(
+                            color: cs.surfaceContainerHighest,
+                            child: Icon(
+                              Icons.person,
+                              size: 32,
+                              color: cs.onSurfaceVariant,
+                            ),
+                          ),
                   ),
                 ),
-                Positioned(
-                  right: 0,
-                  bottom: 0,
+              ),
+
+              // ✅ Small "+" badge always visible (bottom-right)
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: GestureDetector(
+                  onTap: _openAddStory,
                   child: Container(
                     padding: const EdgeInsets.all(2),
                     decoration: BoxDecoration(
@@ -133,30 +187,60 @@ class _StoriesStripState extends State<StoriesStrip> {
                       border: Border.all(color: cs.surface, width: 2),
                     ),
                     child: Icon(
-                      hasMyStory ? Icons.visibility : Icons.add,
+                      Icons.add,
                       color: cs.onPrimary,
                       size: 14,
                     ),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              hasMyStory ? 'My Story' : 'Add Story',
-              style: TextStyle(
-                fontSize: 11,
-                color: cs.onSurface,
-                fontWeight: FontWeight.w500,
               ),
+
+              // ✅ Story count badge (top-right) if multiple
+              if (storyCount > 1)
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.black87,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: cs.surface, width: 1.5),
+                    ),
+                    child: Text(
+                      '$storyCount',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'My Story',
+            style: TextStyle(
+              fontSize: 11,
+              color: cs.onSurface,
+              fontWeight: FontWeight.w500,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _storyTile(Map<String, dynamic> group, ColorScheme cs) {
+  Widget _storyTile(
+    Map<String, dynamic> group,
+    ColorScheme cs,
+    int index,
+  ) {
     final profile = group['profile'];
     String name = 'User';
     String avatarUrl = '';
@@ -172,48 +256,77 @@ class _StoriesStripState extends State<StoriesStrip> {
       name = '${name.substring(0, 10)}…';
     }
 
-    final idx = groups.indexOf(group);
+    final storyCount = (group['stories'] as List).length;
 
     return GestureDetector(
-      onTap: () => _openViewer(idx),
+      onTap: () => _openOtherStory(index),
       child: Padding(
         padding: const EdgeInsets.only(right: 12),
         child: Column(
           children: [
-            Container(
-              width: 64,
-              height: 64,
-              padding: const EdgeInsets.all(2),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [
-                    cs.primary,
-                    Colors.purple.shade400,
-                  ],
+            Stack(
+              children: [
+                Container(
+                  width: 64,
+                  height: 64,
+                  padding: const EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [
+                        cs.primary,
+                        Colors.purple.shade400,
+                      ],
+                    ),
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: cs.surface,
+                    ),
+                    child: CircleAvatar(
+                      radius: 28,
+                      backgroundColor: cs.surfaceContainerHighest,
+                      backgroundImage: avatarUrl.isNotEmpty
+                          ? NetworkImage(avatarUrl)
+                          : null,
+                      child: avatarUrl.isEmpty
+                          ? Icon(
+                              Icons.person,
+                              size: 28,
+                              color: cs.onSurfaceVariant,
+                            )
+                          : null,
+                    ),
+                  ),
                 ),
-              ),
-              child: Container(
-                padding: const EdgeInsets.all(2),
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: cs.surface,
-                ),
-                child: CircleAvatar(
-                  radius: 28,
-                  backgroundColor: cs.surfaceContainerHighest,
-                  backgroundImage: avatarUrl.isNotEmpty
-                      ? NetworkImage(avatarUrl)
-                      : null,
-                  child: avatarUrl.isEmpty
-                      ? Icon(
-                          Icons.person,
-                          size: 28,
-                          color: cs.onSurfaceVariant,
-                        )
-                      : null,
-                ),
-              ),
+                // Story count badge
+                if (storyCount > 1)
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 1,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black87,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: cs.surface, width: 1.5),
+                      ),
+                      child: Text(
+                        '$storyCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
             ),
             const SizedBox(height: 6),
             Text(
