@@ -17,6 +17,7 @@ import 'services/notification_service.dart';
 import 'services/save_service.dart';
 import 'services/report_service.dart';
 import 'services/session_service.dart';
+import 'theme_controller.dart';
 
 const String supabaseUrl =
     'https://fhmshhmklsqgiyvcdvbr.supabase.co';
@@ -25,6 +26,8 @@ const String supabasePublishableKey =
     'sb_publishable_gTJUg-94UMGG7FF73Ey58g_ZLoeEZoW';
 
 SupabaseClient get supabase => Supabase.instance.client;
+
+final ThemeController themeController = ThemeController();
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -43,15 +46,26 @@ class DamadamApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'Damadam',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: Colors.blue,
-        brightness: Brightness.light,
-      ),
-      home: const AuthGate(),
+    return AnimatedBuilder(
+      animation: themeController,
+      builder: (context, _) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'Damadam',
+          themeMode: themeController.mode,
+          theme: ThemeData(
+            useMaterial3: true,
+            colorSchemeSeed: Colors.blue,
+            brightness: Brightness.light,
+          ),
+          darkTheme: ThemeData(
+            useMaterial3: true,
+            colorSchemeSeed: Colors.blue,
+            brightness: Brightness.dark,
+          ),
+          home: const AuthGate(),
+        );
+      },
     );
   }
 }
@@ -102,7 +116,7 @@ class _AuthGateState extends State<AuthGate> {
 }
 
 // ============================================================
-// MAIN SHELL — bottom navigation with DM badge
+// MAIN SHELL
 // ============================================================
 
 class MainShell extends StatefulWidget {
@@ -524,6 +538,7 @@ class _HomeTabState extends State<HomeTab> {
   @override
   Widget build(BuildContext context) {
     final visiblePosts = showForYou ? allPosts : forMePosts;
+    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
@@ -582,7 +597,7 @@ class _HomeTabState extends State<HomeTab> {
       body: Column(
         children: [
           Container(
-            color: Colors.white,
+            color: cs.surface,
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
             child: Row(
               children: [
@@ -601,14 +616,14 @@ class _HomeTabState extends State<HomeTab> {
                 Text(
                   '${visiblePosts.length}',
                   style: TextStyle(
-                    color: Colors.grey.shade600,
+                    color: cs.onSurfaceVariant,
                     fontSize: 13,
                   ),
                 ),
               ],
             ),
           ),
-          const Divider(height: 1),
+          Divider(height: 1, color: cs.outlineVariant),
           Expanded(
             child: RefreshIndicator(
               onRefresh: refreshFeed,
@@ -624,7 +639,7 @@ class _HomeTabState extends State<HomeTab> {
                                   ? Icons.article_outlined
                                   : Icons.people_outline,
                               size: 70,
-                              color: Colors.grey.shade400,
+                              color: cs.onSurfaceVariant,
                             ),
                             const SizedBox(height: 12),
                             Center(
@@ -637,7 +652,7 @@ class _HomeTabState extends State<HomeTab> {
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
                                   fontSize: 16,
-                                  color: Colors.grey.shade600,
+                                  color: cs.onSurfaceVariant,
                                 ),
                               ),
                             ),
@@ -668,21 +683,20 @@ class _HomeTabState extends State<HomeTab> {
     required bool active,
     required VoidCallback onTap,
   }) {
+    final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
-          color: active
-              ? Theme.of(context).colorScheme.primary
-              : Colors.grey.shade200,
+          color: active ? cs.primary : cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
           label,
           style: TextStyle(
             fontWeight: FontWeight.w600,
-            color: active ? Colors.white : Colors.black87,
+            color: active ? cs.onPrimary : cs.onSurface,
           ),
         ),
       ),
@@ -691,7 +705,7 @@ class _HomeTabState extends State<HomeTab> {
 }
 
 // ============================================================
-// MORE TAB
+// MORE TAB — with Dark Mode toggle
 // ============================================================
 
 class MoreTab extends StatelessWidget {
@@ -736,144 +750,170 @@ class MoreTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        title: const Text(
-          'More',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-      ),
-      body: ListView(
-        children: [
-          const SizedBox(height: 8),
+    final cs = Theme.of(context).colorScheme;
 
-          _sectionHeader('Discover'),
-          ListTile(
-            leading: const Icon(Icons.groups_outlined),
-            title: const Text('Groups'),
-            subtitle: const Text('Join communities'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-            tileColor: Colors.white,
-            onTap: () => _show('Groups', context),
-          ),
-          ListTile(
-            leading: const Icon(Icons.star_outline),
-            title: const Text('Recommended for you'),
-            subtitle: const Text('People you may know'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-            tileColor: Colors.white,
-            onTap: () => _show('Recommended', context),
-          ),
-          ListTile(
-            leading: const Icon(Icons.explore_outlined),
-            title: const Text('Explore'),
-            subtitle: const Text('Trending posts'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-            tileColor: Colors.white,
-            onTap: () => _show('Explore', context),
-          ),
-
-          const SizedBox(height: 12),
-
-          _sectionHeader('Activity'),
-          ListTile(
-            leading: const Icon(Icons.bookmark_border),
-            title: const Text('Saved posts'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-            tileColor: Colors.white,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const SavedPostsScreen(),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.block),
-            title: const Text('Blocked users'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-            tileColor: Colors.white,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const BlockedUsersScreen(),
-                ),
-              );
-            },
-          ),
-
-          const SizedBox(height: 12),
-
-          _sectionHeader('App'),
-          ListTile(
-            leading: const Icon(Icons.dark_mode_outlined),
-            title: const Text('Dark mode'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-            tileColor: Colors.white,
-            onTap: () => _show('Dark mode', context),
-          ),
-          ListTile(
-            leading: const Icon(Icons.settings_outlined),
-            title: const Text('Settings'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-            tileColor: Colors.white,
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const SettingsScreen(),
-                ),
-              );
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.lock_outline),
-            title: const Text('Privacy'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-            tileColor: Colors.white,
-            onTap: () => _show('Privacy', context),
-          ),
-
-          const SizedBox(height: 12),
-
-          _sectionHeader('Account'),
-          ListTile(
-            leading: const Icon(Icons.info_outline),
-            title: const Text('About Damadam'),
-            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-            tileColor: Colors.white,
-            onTap: () => _show('About', context),
-          ),
-          ListTile(
-            leading: const Icon(Icons.logout, color: Colors.red),
+    return AnimatedBuilder(
+      animation: themeController,
+      builder: (context, _) {
+        return Scaffold(
+          appBar: AppBar(
             title: const Text(
-              'Logout',
-              style: TextStyle(
-                color: Colors.red,
-                fontWeight: FontWeight.w600,
+              'More',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+          ),
+          body: ListView(
+            children: [
+              const SizedBox(height: 8),
+
+              _sectionHeader('Discover', cs),
+              _tile(
+                context: context,
+                icon: Icons.groups_outlined,
+                title: 'Groups',
+                subtitle: 'Join communities',
+                onTap: () => _show('Groups', context),
               ),
-            ),
-            tileColor: Colors.white,
-            onTap: () => _logout(context),
+              _tile(
+                context: context,
+                icon: Icons.star_outline,
+                title: 'Recommended for you',
+                subtitle: 'People you may know',
+                onTap: () => _show('Recommended', context),
+              ),
+              _tile(
+                context: context,
+                icon: Icons.explore_outlined,
+                title: 'Explore',
+                subtitle: 'Trending posts',
+                onTap: () => _show('Explore', context),
+              ),
+
+              const SizedBox(height: 12),
+
+              _sectionHeader('Activity', cs),
+              _tile(
+                context: context,
+                icon: Icons.bookmark_border,
+                title: 'Saved posts',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const SavedPostsScreen(),
+                    ),
+                  );
+                },
+              ),
+              _tile(
+                context: context,
+                icon: Icons.block,
+                title: 'Blocked users',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const BlockedUsersScreen(),
+                    ),
+                  );
+                },
+              ),
+
+              const SizedBox(height: 12),
+
+              _sectionHeader('App', cs),
+
+              // ✅ DARK MODE TOGGLE
+              SwitchListTile(
+                tileColor: cs.surface,
+                secondary: Icon(
+                  themeController.isDark
+                      ? Icons.dark_mode
+                      : Icons.light_mode,
+                ),
+                title: const Text('Dark mode'),
+                subtitle: Text(
+                  themeController.isDark ? 'On' : 'Off',
+                ),
+                value: themeController.isDark,
+                onChanged: (v) => themeController.setDark(v),
+              ),
+
+              _tile(
+                context: context,
+                icon: Icons.settings_outlined,
+                title: 'Settings',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const SettingsScreen(),
+                    ),
+                  );
+                },
+              ),
+              _tile(
+                context: context,
+                icon: Icons.lock_outline,
+                title: 'Privacy',
+                onTap: () => _show('Privacy', context),
+              ),
+
+              const SizedBox(height: 12),
+
+              _sectionHeader('Account', cs),
+              _tile(
+                context: context,
+                icon: Icons.info_outline,
+                title: 'About Damadam',
+                onTap: () => _show('About', context),
+              ),
+              ListTile(
+                tileColor: cs.surface,
+                leading: const Icon(Icons.logout, color: Colors.red),
+                title: const Text(
+                  'Logout',
+                  style: TextStyle(
+                    color: Colors.red,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                onTap: () => _logout(context),
+              ),
+              const SizedBox(height: 30),
+              Center(
+                child: Text(
+                  'Damadam v1.0.0',
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
+                ),
+              ),
+              const SizedBox(height: 30),
+            ],
           ),
-          const SizedBox(height: 30),
-          Center(
-            child: Text(
-              'Damadam v1.0.0',
-              style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
-            ),
-          ),
-          const SizedBox(height: 30),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _sectionHeader(String title) {
+  Widget _tile({
+    required BuildContext context,
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    required VoidCallback onTap,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return ListTile(
+      tileColor: cs.surface,
+      leading: Icon(icon),
+      title: Text(title),
+      subtitle: subtitle != null ? Text(subtitle) : null,
+      trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+      onTap: onTap,
+    );
+  }
+
+  Widget _sectionHeader(String title, ColorScheme cs) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
       child: Text(
@@ -881,7 +921,7 @@ class MoreTab extends StatelessWidget {
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.bold,
-          color: Colors.grey.shade600,
+          color: cs.onSurfaceVariant,
           letterSpacing: 0.8,
         ),
       ),
@@ -932,7 +972,7 @@ class WelcomeScreen extends StatelessWidget {
                   'Connect. Share. Chat.',
                   style: TextStyle(
                     fontSize: 16,
-                    color: Colors.grey.shade600,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 45),
@@ -2017,6 +2057,7 @@ class _PostCardState extends State<PostCard> {
     final currentUserId = supabase.auth.currentUser?.id;
     final isOwner = userId == currentUserId;
     final avatarUrl = getAvatarUrl();
+    final cs = Theme.of(context).colorScheme;
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -2060,7 +2101,7 @@ class _PostCardState extends State<PostCard> {
                           _timeAgo(widget.post['created_at']?.toString()),
                           style: TextStyle(
                             fontSize: 12,
-                            color: Colors.grey.shade600,
+                            color: cs.onSurfaceVariant,
                           ),
                         ),
                       ],
@@ -2176,7 +2217,7 @@ class _PostCardState extends State<PostCard> {
                   onPressed: _toggleSave,
                   icon: Icon(
                     saved ? Icons.bookmark : Icons.bookmark_border,
-                    color: saved ? Colors.blue : null,
+                    color: saved ? cs.primary : null,
                   ),
                 ),
               ],
@@ -2189,7 +2230,7 @@ class _PostCardState extends State<PostCard> {
 }
 
 // ============================================================
-// COMMENTS SCREEN — with edit/delete/report
+// COMMENTS SCREEN
 // ============================================================
 
 class CommentsScreen extends StatefulWidget {
@@ -2561,6 +2602,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
   @override
   Widget build(BuildContext context) {
     final me = supabase.auth.currentUser?.id;
+    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Comments')),
@@ -2604,9 +2646,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
                                     child: Container(
                                       padding: const EdgeInsets.all(10),
                                       decoration: BoxDecoration(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .surfaceContainerHighest,
+                                        color: cs.surfaceContainerHighest,
                                         borderRadius:
                                             BorderRadius.circular(14),
                                       ),
@@ -2633,7 +2673,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
                                                 '(edited)',
                                                 style: TextStyle(
                                                   fontSize: 10,
-                                                  color: Colors.grey.shade600,
+                                                  color: cs.onSurfaceVariant,
                                                   fontStyle: FontStyle.italic,
                                                 ),
                                               ),
@@ -2664,9 +2704,9 @@ class _CommentsScreenState extends State<CommentsScreen> {
                           Expanded(
                             child: Text(
                               'Replying to ${getUsername(_replyTo!)}',
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
-                                color: Colors.grey,
+                                color: cs.onSurfaceVariant,
                               ),
                             ),
                           ),
@@ -2687,7 +2727,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
                               'Editing your comment',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: Colors.blue.shade600,
+                                color: cs.primary,
                               ),
                             ),
                           ),
