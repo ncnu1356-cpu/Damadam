@@ -158,4 +158,147 @@ class StoryService {
           );
     } catch (_) {}
   }
+
+  // ============================================================
+  // VIEWS
+  // ============================================================
+
+  Future<void> markAsViewed(String storyId) async {
+    final me = currentUserId;
+    if (me == null) return;
+
+    try {
+      await _supabase.from('story_views').upsert(
+        {
+          'story_id': storyId,
+          'viewer_id': me,
+        },
+        onConflict: 'story_id,viewer_id',
+        ignoreDuplicates: true,
+      );
+    } catch (_) {}
+  }
+
+  Future<int> getViewCount(String storyId) async {
+    try {
+      final res = await _supabase
+          .from('story_views')
+          .select('id')
+          .eq('story_id', storyId);
+      return res.length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  // ============================================================
+  // REACTIONS
+  // ============================================================
+
+  Future<void> reactToStory({
+    required String storyId,
+    required String emoji,
+    required String ownerId,
+  }) async {
+    final me = currentUserId;
+    if (me == null || me == ownerId) return;
+
+    try {
+      await _supabase.from('story_reactions').upsert(
+        {
+          'story_id': storyId,
+          'user_id': me,
+          'emoji': emoji,
+        },
+        onConflict: 'story_id,user_id',
+      );
+
+      final profile = await _supabase
+          .from('profiles')
+          .select('username, full_name')
+          .eq('id', me)
+          .maybeSingle();
+
+      final username = profile?['username']?.toString().trim();
+      final displayName = username != null && username.isNotEmpty
+          ? '@$username'
+          : (profile?['full_name']?.toString().trim().isNotEmpty == true
+              ? profile!['full_name'].toString().trim()
+              : 'Someone');
+
+      await _supabase.from('notifications').insert({
+        'user_id': ownerId,
+        'sender_id': me,
+        'type': 'story_reaction',
+        'message': '$displayName reacted $emoji to your story',
+        'is_read': false,
+      });
+    } catch (e) {
+      rethrow;
+    }
+  }
+
+  Future<Map<String, dynamic>?> getMyReaction(String storyId) async {
+    final me = currentUserId;
+    if (me == null) return null;
+
+    try {
+      final res = await _supabase
+          .from('story_reactions')
+          .select()
+          .eq('story_id', storyId)
+          .eq('user_id', me)
+          .maybeSingle();
+      return res;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<int> getReactionCount(String storyId) async {
+    try {
+      final res = await _supabase
+          .from('story_reactions')
+          .select('id')
+          .eq('story_id', storyId);
+      return res.length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  // ============================================================
+  // REPLY
+  // ============================================================
+
+  Future<void> sendStoryReply({
+    required String storyId,
+    required String ownerId,
+    required String content,
+  }) async {
+    final me = currentUserId;
+    if (me == null) throw Exception('User is not logged in.');
+    if (me == ownerId) return;
+
+    final profile = await _supabase
+        .from('profiles')
+        .select('username, full_name')
+        .eq('id', me)
+        .maybeSingle();
+
+    final username = profile?['username']?.toString().trim();
+    final displayName = username != null && username.isNotEmpty
+        ? '@$username'
+        : (profile?['full_name']?.toString().trim().isNotEmpty == true
+            ? profile!['full_name'].toString().trim()
+            : 'Someone');
+
+    await _supabase.from('notifications').insert({
+      'user_id': ownerId,
+      'sender_id': me,
+      'type': 'story_reply',
+      'message': '$displayName replied to your story: $content',
+      'is_read': false,
+    });
+  }
 }
