@@ -33,7 +33,6 @@ Future<void> main() async {
     anonKey: supabasePublishableKey,
   );
 
-  // ✅ Start tracking last_seen
   SessionService().start();
 
   runApp(const DamadamApp());
@@ -1674,7 +1673,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 }
 
 // ============================================================
-// POST CARD — with bookmark + share
+// POST CARD
 // ============================================================
 
 class PostCard extends StatefulWidget {
@@ -1716,7 +1715,7 @@ class _PostCardState extends State<PostCard> {
   @override
   void initState() {
     super.initState();
-    _loadLikeStatus();
+    loadLikeStatus();
     _loadSaveStatus();
   }
 
@@ -2327,7 +2326,6 @@ class _CommentsScreenState extends State<CommentsScreen> {
     setState(() => sending = true);
 
     try {
-      // EDIT mode
       if (_editing != null) {
         await supabase
             .from('comments')
@@ -2347,7 +2345,6 @@ class _CommentsScreenState extends State<CommentsScreen> {
         return;
       }
 
-      // NEW comment
       String finalContent = text;
 
       if (_replyTo != null) {
