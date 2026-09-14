@@ -100,17 +100,14 @@ class DmService {
           .eq('id', me)
           .maybeSingle();
 
-      final username =
-          profile?['username']?.toString().trim();
-      final fullName =
-          profile?['full_name']?.toString().trim();
+      final username = profile?['username']?.toString().trim();
+      final fullName = profile?['full_name']?.toString().trim();
 
-      final displayName =
-          username != null && username.isNotEmpty
-              ? '@$username'
-              : (fullName != null && fullName.isNotEmpty
-                  ? fullName
-                  : 'Someone');
+      final displayName = username != null && username.isNotEmpty
+          ? '@$username'
+          : (fullName != null && fullName.isNotEmpty
+              ? fullName
+              : 'Someone');
 
       await _supabase.from('notifications').insert({
         'user_id': otherUserId,
@@ -292,24 +289,33 @@ class DmService {
   }
 
   // ============================================================
-  // MESSAGES
+  // MESSAGES — PAGINATED
   // ============================================================
 
-  // ✅ FIXED: manual fetch instead of PostgREST self-join
+  // ✅ Loads last `limit` messages, or older ones before `before`
   Future<List<Map<String, dynamic>>> getMessages(
-    String conversationId,
-  ) async {
-    // 1. Fetch all messages
-    final res = await _supabase
+    String conversationId, {
+    DateTime? before,
+    int limit = 30,
+  }) async {
+    var q = _supabase
         .from('dm_messages')
         .select()
-        .eq('conversation_id', conversationId)
-        .order('created_at', ascending: true);
+        .eq('conversation_id', conversationId);
 
-    final list = List<Map<String, dynamic>>.from(res);
+    if (before != null) {
+      q = q.lt('created_at', before.toUtc().toIso8601String());
+    }
+
+    final res = await q
+        .order('created_at', ascending: false)
+        .limit(limit);
+
+    // Newest-first from server, reverse to chronological
+    final list = List<Map<String, dynamic>>.from(res).reversed.toList();
+
     if (list.isEmpty) return list;
 
-    // 2. Collect all reply_to_ids
     final replyIds = list
         .map((m) => m['reply_to_id']?.toString())
         .whereType<String>()
@@ -319,7 +325,6 @@ class DmService {
 
     if (replyIds.isEmpty) return list;
 
-    // 3. Fetch the replied-to messages in ONE query
     final replyRes = await _supabase
         .from('dm_messages')
         .select('id, content, image_url, sender_id, deleted_at')
@@ -330,7 +335,6 @@ class DmService {
       replyMap[r['id'].toString()] = r;
     }
 
-    // 4. Attach reply_to data to each message
     for (final m in list) {
       final rid = m['reply_to_id']?.toString();
       if (rid != null && replyMap.containsKey(rid)) {
