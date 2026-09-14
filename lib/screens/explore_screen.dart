@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -326,7 +327,7 @@ class _ExplorePostCard extends StatelessWidget {
     );
   }
 
-  // ✅ FIXED: uses TextSpan for hashtags + tap via recognizer
+  // ✅ FIXED: no WidgetSpan — uses TextSpan + TapGestureRecognizer
   Widget _buildContentWithHashtags(String content, ColorScheme cs) {
     final regex = RegExp(r'#(\w{1,50})');
     final spans = <TextSpan>[];
