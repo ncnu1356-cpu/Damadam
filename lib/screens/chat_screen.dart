@@ -17,6 +17,8 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
+  static const int _pageSize = 30;
+
   final DmService _dm = DmService();
   final SupabaseClient _supabase = Supabase.instance.client;
   final TextEditingController _controller = TextEditingController();
@@ -26,11 +28,11 @@ class _ChatScreenState extends State<ChatScreen> {
   List<Map<String, dynamic>> messages = [];
   bool loading = true;
   bool sending = false;
+  bool _loadingOlder = false;
+  bool _hasMore = true;
 
-  // ✅ Reply target
   Map<String, dynamic>? _replyTo;
 
-  // ✅ Online status
   DateTime? _otherLastSeen;
   Timer? _presenceTimer;
 
@@ -38,12 +40,13 @@ class _ChatScreenState extends State<ChatScreen> {
   RealtimeChannel? _profileChannel;
 
   String get _me => _supabase.auth.currentUser?.id ?? '';
-
   String get _conversationId => widget.conversation['id'].toString();
 
   Map<String, dynamic> get _otherUser {
     final isReq = widget.conversation['requester_id']?.toString() == _me;
-    final o = isReq ? widget.conversation['recipient'] : widget.conversation['requester'];
+    final o = isReq
+        ? widget.conversation['recipient']
+        : widget.conversation['requester'];
     if (o is Map<String, dynamic>) return o;
     return <String, dynamic>{};
   }
@@ -53,19 +56,21 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
-    _load();
+    _load(reset: true);
     _loadLastSeen();
     _subscribe();
 
-    // Refresh online status every 30s
     _presenceTimer = Timer.periodic(
       const Duration(seconds: 30),
       (_) => _loadLastSeen(),
     );
+
+    _scroll.addListener(_onScroll);
   }
 
   @override
   void dispose() {
+    _scroll.removeListener(_onScroll);
     _channel?.unsubscribe();
     _profileChannel?.unsubscribe();
     _presenceTimer?.cancel();
@@ -74,19 +79,90 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  Future<void> _load() async {
+  void _onScroll() {
+    if (!_scroll.hasClients) return;
+    if (_scroll.position.pixels < 200) {
+      _loadOlder();
+    }
+  }
+
+  Future<void> _load({bool reset = false}) async {
     try {
-      final list = await _dm.getMessages(_conversationId);
+      if (reset) _hasMore = true;
+
+      final list = await _dm.getMessages(
+        _conversationId,
+        limit: _pageSize,
+      );
+
       if (!mounted) return;
+
       setState(() {
-        messages = list;
+        if (reset) {
+          messages = list;
+        } else {
+          final existingIds =
+              messages.map((m) => m['id'].toString()).toSet();
+          final toAdd = list
+              .where((m) => !existingIds.contains(m['id'].toString()))
+              .toList();
+          messages = [...toAdd, ...messages];
+        }
+        _hasMore = list.length == _pageSize;
         loading = false;
       });
-      _scrollToBottom();
+
+      if (reset) _scrollToBottom();
     } catch (e) {
       if (!mounted) return;
       setState(() => loading = false);
       _show('Load failed: $e');
+    }
+  }
+
+  Future<void> _loadOlder() async {
+    if (_loadingOlder || !_hasMore || messages.isEmpty) return;
+
+    setState(() => _loadingOlder = true);
+
+    final oldest = messages.first['created_at']?.toString();
+    final oldestDt = oldest != null ? DateTime.tryParse(oldest) : null;
+    if (oldestDt == null) {
+      setState(() => _loadingOlder = false);
+      return;
+    }
+
+    try {
+      final older = await _dm.getMessages(
+        _conversationId,
+        before: oldestDt,
+        limit: _pageSize,
+      );
+
+      if (!mounted) return;
+
+      if (older.isEmpty) {
+        setState(() {
+          _hasMore = false;
+          _loadingOlder = false;
+        });
+        return;
+      }
+
+      final existingIds = messages.map((m) => m['id'].toString()).toSet();
+      final toAdd = older
+          .where((m) => !existingIds.contains(m['id'].toString()))
+          .toList();
+
+      setState(() {
+        messages = [...toAdd, ...messages];
+        _hasMore = older.length == _pageSize;
+        _loadingOlder = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loadingOlder = false);
+      _show('Load older failed: $e');
     }
   }
 
@@ -111,12 +187,11 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           callback: (_) {
             if (!mounted) return;
-            _load();
+            _loadRealtime();
           },
         )
         .subscribe();
 
-    // Watch other user's profile for last_seen changes
     _profileChannel = _supabase
         .channel('profile:$_otherUserId')
         .onPostgresChanges(
@@ -131,6 +206,36 @@ class _ChatScreenState extends State<ChatScreen> {
           callback: (_) => _loadLastSeen(),
         )
         .subscribe();
+  }
+
+  Future<void> _loadRealtime() async {
+    try {
+      final latest = await _dm.getMessages(
+        _conversationId,
+        limit: _pageSize,
+      );
+
+      if (!mounted) return;
+
+      final existingIds = messages.map((m) => m['id'].toString()).toSet();
+      final toAdd = latest
+          .where((m) => !existingIds.contains(m['id'].toString()))
+          .toList();
+
+      if (toAdd.isEmpty) {
+        final map = {for (final m in latest) m['id'].toString(): m};
+        messages = messages
+            .map((m) => map[m['id'].toString()] ?? m)
+            .toList();
+        setState(() {});
+        return;
+      }
+
+      setState(() {
+        messages = [...messages, ...toAdd];
+      });
+      _scrollToBottom();
+    } catch (_) {}
   }
 
   void _scrollToBottom() {
@@ -162,7 +267,7 @@ class _ChatScreenState extends State<ChatScreen> {
       );
       if (!mounted) return;
       setState(() => _replyTo = null);
-      await _load();
+      await _loadRealtime();
     } catch (e) {
       _show('Send failed: $e');
     } finally {
@@ -202,7 +307,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (!mounted) return;
       setState(() => _replyTo = null);
-      await _load();
+      await _loadRealtime();
     } catch (e) {
       _show('Image failed: $e');
     } finally {
@@ -234,7 +339,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       await _dm.deleteMessage(msg['id'].toString());
-      await _load();
+      await _loadRealtime();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Message deleted')),
@@ -301,9 +406,11 @@ class _ChatScreenState extends State<ChatScreen> {
                 CircleAvatar(
                   radius: 18,
                   backgroundColor: Colors.blueGrey.shade100,
-                  backgroundImage: avatar.isNotEmpty ? NetworkImage(avatar) : null,
+                  backgroundImage:
+                      avatar.isNotEmpty ? NetworkImage(avatar) : null,
                   child: avatar.isEmpty
-                      ? const Icon(Icons.person, size: 18, color: Colors.white)
+                      ? const Icon(Icons.person,
+                          size: 18, color: Colors.white)
                       : null,
                 ),
                 if (isOnline)
@@ -316,7 +423,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       decoration: BoxDecoration(
                         color: Colors.green,
                         shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 1.5),
+                        border:
+                            Border.all(color: Colors.white, width: 1.5),
                       ),
                     ),
                   ),
@@ -364,9 +472,26 @@ class _ChatScreenState extends State<ChatScreen> {
                     : ListView.builder(
                         controller: _scroll,
                         padding: const EdgeInsets.fromLTRB(10, 12, 10, 12),
-                        itemCount: messages.length,
+                        itemCount: messages.length + (_loadingOlder ? 1 : 0),
                         itemBuilder: (context, index) {
-                          final msg = messages[index];
+                          if (_loadingOlder && index == 0) {
+                            return const Padding(
+                              padding: EdgeInsets.all(12),
+                              child: Center(
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }
+
+                          final realIndex =
+                              _loadingOlder ? index - 1 : index;
+                          final msg = messages[realIndex];
                           final isMe = msg['sender_id']?.toString() == _me;
                           return _bubble(msg, isMe);
                         },
@@ -386,18 +511,21 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.waving_hand_rounded, size: 60, color: Colors.amber.shade400),
+            Icon(Icons.waving_hand_rounded,
+                size: 60, color: Colors.amber.shade400),
             const SizedBox(height: 16),
             Text(
               'Say hi to ${_displayName(_otherUser)}',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              style: const TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 6),
             const Text(
               'Long-press your message to delete it\nSwipe a message right to reply',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: Colors.grey, height: 1.5),
+              style: TextStyle(
+                  fontSize: 12, color: Colors.grey, height: 1.5),
             ),
           ],
         ),
@@ -405,7 +533,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  // ✅ Reply preview bar (shows above input)
   Widget _replyPreviewBar() {
     final repliedToMe = _replyTo!['sender_id']?.toString() == _me;
     final previewText = _replyTo!['deleted_at'] != null
@@ -445,7 +572,8 @@ class _ChatScreenState extends State<ChatScreen> {
                   previewText,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 13, color: Colors.grey.shade700),
+                  style:
+                      TextStyle(fontSize: 13, color: Colors.grey.shade700),
                 ),
               ],
             ),
@@ -465,7 +593,6 @@ class _ChatScreenState extends State<ChatScreen> {
     final imageUrl = msg['image_url']?.toString() ?? '';
     final time = _timeLabel(msg['created_at']?.toString());
 
-    // ✅ Reply preview inside bubble
     final replied = msg['reply_to'];
     final hasReply = replied is Map<String, dynamic>;
 
@@ -492,13 +619,15 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ✅ Reply preview inside bubble
           if (hasReply && !deleted)
             Container(
               margin: const EdgeInsets.only(bottom: 6),
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: BoxDecoration(
-                color: isMe ? Colors.white.withAlpha(60) : Colors.grey.shade100,
+                color: isMe
+                    ? Colors.white.withAlpha(60)
+                    : Colors.grey.shade100,
                 borderRadius: BorderRadius.circular(8),
                 border: Border(
                   left: BorderSide(
@@ -524,14 +653,20 @@ class _ChatScreenState extends State<ChatScreen> {
                   Text(
                     replied['deleted_at'] != null
                         ? 'This message was deleted'
-                        : (replied['content']?.toString().trim().isNotEmpty == true
+                        : (replied['content']
+                                    ?.toString()
+                                    .trim()
+                                    .isNotEmpty ==
+                                true
                             ? replied['content'].toString().trim()
                             : '📷 Photo'),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 12,
-                      color: isMe ? Colors.white70 : Colors.grey.shade700,
+                      color: isMe
+                          ? Colors.white70
+                          : Colors.grey.shade700,
                     ),
                   ),
                 ],
@@ -543,13 +678,15 @@ class _ChatScreenState extends State<ChatScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.block,
-                    size: 14, color: isMe ? Colors.white70 : Colors.grey),
+                    size: 14,
+                    color: isMe ? Colors.white70 : Colors.grey),
                 const SizedBox(width: 6),
                 Text(
                   'This message was deleted',
                   style: TextStyle(
                     fontStyle: FontStyle.italic,
-                    color: isMe ? Colors.white70 : Colors.grey.shade600,
+                    color:
+                        isMe ? Colors.white70 : Colors.grey.shade600,
                     fontSize: 13,
                   ),
                 ),
@@ -559,7 +696,8 @@ class _ChatScreenState extends State<ChatScreen> {
             if (content.isNotEmpty)
               Text(
                 content,
-                style: TextStyle(color: textColor, fontSize: 15, height: 1.35),
+                style: TextStyle(
+                    color: textColor, fontSize: 15, height: 1.35),
               ),
             if (imageUrl.isNotEmpty) ...[
               if (content.isNotEmpty) const SizedBox(height: 6),
@@ -576,10 +714,12 @@ class _ChatScreenState extends State<ChatScreen> {
                       child: Center(child: CircularProgressIndicator()),
                     );
                   },
-                  errorBuilder: (context, error, stackTrace) => const SizedBox(
+                  errorBuilder: (context, error, stackTrace) =>
+                      const SizedBox(
                     height: 120,
                     child: Center(
-                      child: Icon(Icons.broken_image, color: Colors.white70),
+                      child: Icon(Icons.broken_image,
+                          color: Colors.white70),
                     ),
                   ),
                 ),
@@ -598,11 +738,11 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
 
-    // ✅ Swipe-to-reply wrapper
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
-        mainAxisAlignment: isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment:
+            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Flexible(
@@ -613,7 +753,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 if (!deleted) {
                   setState(() => _replyTo = msg);
                 }
-                return false; // don't dismiss
+                return false;
               },
               background: Container(
                 alignment: Alignment.centerLeft,
@@ -665,7 +805,8 @@ class _ChatScreenState extends State<ChatScreen> {
                     borderSide: BorderSide.none,
                   ),
                   contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
                 ),
               ),
             ),
