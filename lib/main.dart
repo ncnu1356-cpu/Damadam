@@ -1,15 +1,22 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'screens/notifications_screen.dart';
 import 'screens/search_screen.dart';
 import 'screens/dm_tab.dart';
+import 'screens/settings_screen.dart';
+import 'screens/saved_posts_screen.dart';
+import 'screens/blocked_users_screen.dart';
 import 'screens/profile/profile_screen.dart';
 import 'screens/profile/public_profile_screen.dart';
 import 'services/notification_service.dart';
+import 'services/save_service.dart';
+import 'services/report_service.dart';
+import 'services/session_service.dart';
 
 const String supabaseUrl =
     'https://fhmshhmklsqgiyvcdvbr.supabase.co';
@@ -25,6 +32,10 @@ Future<void> main() async {
     url: supabaseUrl,
     anonKey: supabasePublishableKey,
   );
+
+  // ✅ Start tracking last_seen
+  SessionService().start();
+
   runApp(const DamadamApp());
 }
 
@@ -119,7 +130,7 @@ class _MainShellState extends State<MainShell> {
   @override
   void initState() {
     super.initState();
-    _loadInitialDmBadge(); // ✅ NEW
+    _loadInitialDmBadge();
     _subscribeDmBadge();
   }
 
@@ -130,13 +141,11 @@ class _MainShellState extends State<MainShell> {
     super.dispose();
   }
 
-  // ✅ NEW: Load pending count when app starts
   Future<void> _loadInitialDmBadge() async {
     final me = supabase.auth.currentUser?.id;
     if (me == null) return;
 
     try {
-      // Pending incoming requests
       final reqRes = await supabase
           .from('dm_conversations')
           .select('id')
@@ -150,12 +159,10 @@ class _MainShellState extends State<MainShell> {
     }
   }
 
-  // ✅ Listens for new DM messages AND new DM requests
   void _subscribeDmBadge() {
     final me = supabase.auth.currentUser?.id;
     if (me == null) return;
 
-    // Channel 1: new MESSAGES sent to me
     _dmBadgeChannel = supabase
         .channel('dm:badge:$me')
         .onPostgresChanges(
@@ -190,8 +197,6 @@ class _MainShellState extends State<MainShell> {
         )
         .subscribe();
 
-    // ✅ Channel 2: new REQUESTS where I'm the recipient
-    // Filter removed — check manually inside callback
     _dmRequestChannel = supabase
         .channel('dm:requests:badge:$me')
         .onPostgresChanges(
@@ -204,7 +209,6 @@ class _MainShellState extends State<MainShell> {
             final requesterId =
                 payload.newRecord['requester_id']?.toString();
 
-            // Only count if I'm the recipient and not the sender
             if (recipientId != me) return;
             if (requesterId == me) return;
 
@@ -258,14 +262,11 @@ class _MainShellState extends State<MainShell> {
             selectedIcon: Icon(Icons.home),
             label: 'Home',
           ),
-
           NavigationDestination(
             icon: _dmUnreadCount > 0
                 ? Badge(
                     label: Text(
-                      _dmUnreadCount > 99
-                          ? '99+'
-                          : '$_dmUnreadCount',
+                      _dmUnreadCount > 99 ? '99+' : '$_dmUnreadCount',
                     ),
                     child: const Icon(Icons.chat_bubble_outline),
                   )
@@ -273,16 +274,13 @@ class _MainShellState extends State<MainShell> {
             selectedIcon: _dmUnreadCount > 0
                 ? Badge(
                     label: Text(
-                      _dmUnreadCount > 99
-                          ? '99+'
-                          : '$_dmUnreadCount',
+                      _dmUnreadCount > 99 ? '99+' : '$_dmUnreadCount',
                     ),
                     child: const Icon(Icons.chat_bubble),
                   )
                 : const Icon(Icons.chat_bubble),
             label: '1on1',
           ),
-
           const NavigationDestination(
             icon: Icon(Icons.add_circle_outline),
             selectedIcon: Icon(Icons.add_circle),
@@ -398,13 +396,11 @@ class _HomeTabState extends State<HomeTab> {
   void _rebuildForMe() {
     forMePosts = allPosts.where((p) {
       final uid = p['user_id']?.toString() ?? '';
-      return _followingIds.contains(uid) ||
-          uid == _currentUserId();
+      return _followingIds.contains(uid) || uid == _currentUserId();
     }).toList();
   }
 
-  String _currentUserId() =>
-      supabase.auth.currentUser?.id ?? '';
+  String _currentUserId() => supabase.auth.currentUser?.id ?? '';
 
   Future<void> _loadUnreadNotificationCount() async {
     final user = supabase.auth.currentUser;
@@ -432,13 +428,10 @@ class _HomeTabState extends State<HomeTab> {
           schema: 'public',
           table: 'posts',
           callback: (payload) async {
-            final newPostId =
-                payload.newRecord['id']?.toString();
+            final newPostId = payload.newRecord['id']?.toString();
             if (newPostId == null) return;
 
-            if (allPosts.any(
-              (p) => p['id']?.toString() == newPostId,
-            )) {
+            if (allPosts.any((p) => p['id']?.toString() == newPostId)) {
               return;
             }
 
@@ -568,10 +561,7 @@ class _HomeTabState extends State<HomeTab> {
                     decoration: BoxDecoration(
                       color: Colors.red,
                       borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: Colors.white,
-                        width: 1.5,
-                      ),
+                      border: Border.all(color: Colors.white, width: 1.5),
                     ),
                     child: Text(
                       unreadNotificationCount > 99
@@ -600,15 +590,13 @@ class _HomeTabState extends State<HomeTab> {
                 _toggleButton(
                   label: 'For You',
                   active: showForYou,
-                  onTap: () =>
-                      setState(() => showForYou = true),
+                  onTap: () => setState(() => showForYou = true),
                 ),
                 const SizedBox(width: 8),
                 _toggleButton(
                   label: 'For Me',
                   active: !showForYou,
-                  onTap: () =>
-                      setState(() => showForYou = false),
+                  onTap: () => setState(() => showForYou = false),
                 ),
                 const Spacer(),
                 Text(
@@ -622,18 +610,14 @@ class _HomeTabState extends State<HomeTab> {
             ),
           ),
           const Divider(height: 1),
-
           Expanded(
             child: RefreshIndicator(
               onRefresh: refreshFeed,
               child: loading
-                  ? const Center(
-                      child: CircularProgressIndicator(),
-                    )
+                  ? const Center(child: CircularProgressIndicator())
                   : visiblePosts.isEmpty
                       ? ListView(
-                          physics:
-                              const AlwaysScrollableScrollPhysics(),
+                          physics: const AlwaysScrollableScrollPhysics(),
                           children: [
                             const SizedBox(height: 140),
                             Icon(
@@ -661,12 +645,8 @@ class _HomeTabState extends State<HomeTab> {
                           ],
                         )
                       : ListView.builder(
-                          physics:
-                              const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.only(
-                            top: 8,
-                            bottom: 20,
-                          ),
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: const EdgeInsets.only(top: 8, bottom: 20),
                           itemCount: visiblePosts.length,
                           itemBuilder: (context, index) {
                             final post = visiblePosts[index];
@@ -692,10 +672,7 @@ class _HomeTabState extends State<HomeTab> {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 8,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
           color: active
               ? Theme.of(context).colorScheme.primary
@@ -761,6 +738,7 @@ class MoreTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
         title: const Text(
           'More',
@@ -777,6 +755,7 @@ class MoreTab extends StatelessWidget {
             title: const Text('Groups'),
             subtitle: const Text('Join communities'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+            tileColor: Colors.white,
             onTap: () => _show('Groups', context),
           ),
           ListTile(
@@ -784,6 +763,7 @@ class MoreTab extends StatelessWidget {
             title: const Text('Recommended for you'),
             subtitle: const Text('People you may know'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+            tileColor: Colors.white,
             onTap: () => _show('Recommended', context),
           ),
           ListTile(
@@ -791,38 +771,82 @@ class MoreTab extends StatelessWidget {
             title: const Text('Explore'),
             subtitle: const Text('Trending posts'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+            tileColor: Colors.white,
             onTap: () => _show('Explore', context),
           ),
 
-          const Divider(height: 30),
+          const SizedBox(height: 12),
+
+          _sectionHeader('Activity'),
+          ListTile(
+            leading: const Icon(Icons.bookmark_border),
+            title: const Text('Saved posts'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+            tileColor: Colors.white,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const SavedPostsScreen(),
+                ),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.block),
+            title: const Text('Blocked users'),
+            trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+            tileColor: Colors.white,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const BlockedUsersScreen(),
+                ),
+              );
+            },
+          ),
+
+          const SizedBox(height: 12),
 
           _sectionHeader('App'),
           ListTile(
             leading: const Icon(Icons.dark_mode_outlined),
             title: const Text('Dark mode'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+            tileColor: Colors.white,
             onTap: () => _show('Dark mode', context),
           ),
           ListTile(
             leading: const Icon(Icons.settings_outlined),
             title: const Text('Settings'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 14),
-            onTap: () => _show('Settings', context),
+            tileColor: Colors.white,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const SettingsScreen(),
+                ),
+              );
+            },
           ),
           ListTile(
             leading: const Icon(Icons.lock_outline),
             title: const Text('Privacy'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+            tileColor: Colors.white,
             onTap: () => _show('Privacy', context),
           ),
 
-          const Divider(height: 30),
+          const SizedBox(height: 12),
 
           _sectionHeader('Account'),
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('About Damadam'),
             trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+            tileColor: Colors.white,
             onTap: () => _show('About', context),
           ),
           ListTile(
@@ -834,16 +858,14 @@ class MoreTab extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
+            tileColor: Colors.white,
             onTap: () => _logout(context),
           ),
           const SizedBox(height: 30),
           Center(
             child: Text(
               'Damadam v1.0.0',
-              style: TextStyle(
-                color: Colors.grey.shade400,
-                fontSize: 12,
-              ),
+              style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
             ),
           ),
           const SizedBox(height: 30),
@@ -889,8 +911,7 @@ class WelcomeScreen extends StatelessWidget {
                   width: 100,
                   height: 100,
                   decoration: BoxDecoration(
-                    color:
-                        Theme.of(context).colorScheme.primaryContainer,
+                    color: Theme.of(context).colorScheme.primaryContainer,
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -1286,8 +1307,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) =>
-                            const ForgotPasswordScreen(),
+                        builder: (_) => const ForgotPasswordScreen(),
                       ),
                     );
                   },
@@ -1433,8 +1453,7 @@ class CreatePostScreen extends StatefulWidget {
   const CreatePostScreen({super.key});
 
   @override
-  State<CreatePostScreen> createState() =>
-      _CreatePostScreenState();
+  State<CreatePostScreen> createState() => _CreatePostScreenState();
 }
 
 class _CreatePostScreenState extends State<CreatePostScreen> {
@@ -1603,8 +1622,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed:
-                          uploading ? null : pickFromGallery,
+                      onPressed: uploading ? null : pickFromGallery,
                       icon: const Icon(Icons.photo_library_outlined),
                       label: const Text('Gallery'),
                     ),
@@ -1612,8 +1630,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed:
-                          uploading ? null : pickFromCamera,
+                      onPressed: uploading ? null : pickFromCamera,
                       icon: const Icon(Icons.camera_alt_outlined),
                       label: const Text('Camera'),
                     ),
@@ -1628,8 +1645,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
                   onPressed: uploading ? null : publishPost,
                   child: uploading
                       ? const Row(
-                          mainAxisAlignment:
-                              MainAxisAlignment.center,
+                          mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             SizedBox(
                               width: 22,
@@ -1658,7 +1674,7 @@ class _CreatePostScreenState extends State<CreatePostScreen> {
 }
 
 // ============================================================
-// POST CARD
+// POST CARD — with bookmark + share
 // ============================================================
 
 class PostCard extends StatefulWidget {
@@ -1676,9 +1692,14 @@ class PostCard extends StatefulWidget {
 }
 
 class _PostCardState extends State<PostCard> {
+  final SaveService _save = SaveService();
+  final ReportService _report = ReportService();
+
   bool liked = false;
   bool likeLoading = false;
   int likeCount = 0;
+
+  bool saved = false;
 
   String _timeAgo(String? iso) {
     if (iso == null) return '';
@@ -1695,7 +1716,101 @@ class _PostCardState extends State<PostCard> {
   @override
   void initState() {
     super.initState();
-    loadLikeStatus();
+    _loadLikeStatus();
+    _loadSaveStatus();
+  }
+
+  Future<void> _loadSaveStatus() async {
+    final s = await _save.isSaved(widget.post['id'].toString());
+    if (!mounted) return;
+    setState(() => saved = s);
+  }
+
+  Future<void> _toggleSave() async {
+    try {
+      final now = await _save.toggleSave(widget.post['id'].toString());
+      if (!mounted) return;
+      setState(() => saved = now);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(now ? 'Saved' : 'Removed from saved'),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Save failed: $e')),
+      );
+    }
+  }
+
+  void _share() {
+    final content = widget.post['content']?.toString().trim() ?? '';
+    final name = getUsername();
+    final shareText = '$name posted on Damadam:\n\n'
+        '${content.isEmpty ? "[Photo]" : content}\n\n'
+        '— Damadam';
+
+    Clipboard.setData(ClipboardData(text: shareText));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Post text copied — paste in WhatsApp'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Future<void> _openReportSheet() async {
+    final reason = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Report this post',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ),
+            for (final r in const [
+              'Spam or scam',
+              'Nudity or sexual content',
+              'Hate speech',
+              'Violence',
+              'False information',
+              'Harassment',
+              'Other',
+            ])
+              ListTile(
+                title: Text(r),
+                onTap: () => Navigator.pop(context, r),
+              ),
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+    );
+
+    if (reason == null) return;
+
+    try {
+      await _report.reportPost(
+        postId: widget.post['id'].toString(),
+        reason: reason,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Report submitted — thanks')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Report failed: $e')),
+      );
+    }
   }
 
   Future<void> loadLikeStatus() async {
@@ -1737,19 +1852,13 @@ class _PostCardState extends State<PostCard> {
           .eq('id', currentUser.id)
           .maybeSingle();
 
-      final username =
-          profile?['username']?.toString().trim();
+      final username = profile?['username']?.toString().trim();
 
-      final displayName =
-          username != null && username.isNotEmpty
-              ? '@$username'
-              : (profile?['full_name']
-                          ?.toString()
-                          .trim()
-                          .isNotEmpty ==
-                      true
-                  ? profile!['full_name'].toString().trim()
-                  : 'Someone');
+      final displayName = username != null && username.isNotEmpty
+          ? '@$username'
+          : (profile?['full_name']?.toString().trim().isNotEmpty == true
+              ? profile!['full_name'].toString().trim()
+              : 'Someone');
 
       await NotificationService().createNotification(
         userId: postOwnerId,
@@ -1778,10 +1887,7 @@ class _PostCardState extends State<PostCard> {
           .maybeSingle();
 
       if (existing != null) {
-        await supabase
-            .from('likes')
-            .delete()
-            .eq('id', existing['id']);
+        await supabase.from('likes').delete().eq('id', existing['id']);
 
         if (!mounted) return;
         setState(() {
@@ -1856,9 +1962,7 @@ class _PostCardState extends State<PostCard> {
     } on PostgrestException catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Could not delete post: ${e.message}'),
-        ),
+        SnackBar(content: Text('Could not delete post: ${e.message}')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -1916,10 +2020,7 @@ class _PostCardState extends State<PostCard> {
     final avatarUrl = getAvatarUrl();
 
     return Card(
-      margin: const EdgeInsets.symmetric(
-        horizontal: 10,
-        vertical: 6,
-      ),
+      margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       clipBehavior: Clip.antiAlias,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1957,9 +2058,7 @@ class _PostCardState extends State<PostCard> {
                         ),
                         const SizedBox(width: 6),
                         Text(
-                          _timeAgo(
-                            widget.post['created_at']?.toString(),
-                          ),
+                          _timeAgo(widget.post['created_at']?.toString()),
                           style: TextStyle(
                             fontSize: 12,
                             color: Colors.grey.shade600,
@@ -1969,13 +2068,15 @@ class _PostCardState extends State<PostCard> {
                     ),
                   ),
                 ),
-                if (isOwner)
-                  PopupMenuButton<String>(
-                    onSelected: (value) {
-                      if (value == 'delete') deletePost();
-                    },
-                    itemBuilder: (context) => const [
-                      PopupMenuItem(
+                PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert),
+                  onSelected: (value) {
+                    if (value == 'delete') deletePost();
+                    if (value == 'report') _openReportSheet();
+                  },
+                  itemBuilder: (context) => [
+                    if (isOwner)
+                      const PopupMenuItem(
                         value: 'delete',
                         child: Row(
                           children: [
@@ -1985,8 +2086,19 @@ class _PostCardState extends State<PostCard> {
                           ],
                         ),
                       ),
-                    ],
-                  ),
+                    if (!isOwner)
+                      const PopupMenuItem(
+                        value: 'report',
+                        child: Row(
+                          children: [
+                            Icon(Icons.flag_outlined),
+                            SizedBox(width: 8),
+                            Text('Report'),
+                          ],
+                        ),
+                      ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -2000,21 +2112,16 @@ class _PostCardState extends State<PostCard> {
             ),
           if (imageUrl != null && imageUrl.isNotEmpty)
             ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxHeight: 340,
-              ),
+              constraints: const BoxConstraints(maxHeight: 340),
               child: Image.network(
                 imageUrl,
                 width: double.infinity,
                 fit: BoxFit.cover,
-                loadingBuilder:
-                    (context, child, loadingProgress) {
+                loadingBuilder: (context, child, loadingProgress) {
                   if (loadingProgress == null) return child;
                   return const SizedBox(
                     height: 250,
-                    child: Center(
-                      child: CircularProgressIndicator(),
-                    ),
+                    child: Center(child: CircularProgressIndicator()),
                   );
                 },
                 errorBuilder: (context, error, stackTrace) {
@@ -2031,27 +2138,19 @@ class _PostCardState extends State<PostCard> {
               ),
             ),
           Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 8,
-              vertical: 4,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
             child: Row(
               children: [
                 IconButton(
-                  onPressed:
-                      likeLoading ? null : toggleLike,
+                  onPressed: likeLoading ? null : toggleLike,
                   icon: Icon(
-                    liked
-                        ? Icons.favorite
-                        : Icons.favorite_border,
+                    liked ? Icons.favorite : Icons.favorite_border,
                     color: liked ? Colors.red : null,
                   ),
                 ),
                 Text(
                   '$likeCount',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w500,
-                  ),
+                  style: const TextStyle(fontWeight: FontWeight.w500),
                 ),
                 const SizedBox(width: 8),
                 IconButton(
@@ -2068,6 +2167,19 @@ class _PostCardState extends State<PostCard> {
                   icon: const Icon(Icons.comment_outlined),
                 ),
                 const Spacer(),
+                IconButton(
+                  tooltip: 'Share',
+                  onPressed: _share,
+                  icon: const Icon(Icons.share_outlined),
+                ),
+                IconButton(
+                  tooltip: saved ? 'Saved' : 'Save',
+                  onPressed: _toggleSave,
+                  icon: Icon(
+                    saved ? Icons.bookmark : Icons.bookmark_border,
+                    color: saved ? Colors.blue : null,
+                  ),
+                ),
               ],
             ),
           ),
@@ -2078,7 +2190,7 @@ class _PostCardState extends State<PostCard> {
 }
 
 // ============================================================
-// COMMENTS SCREEN
+// COMMENTS SCREEN — with edit/delete/report
 // ============================================================
 
 class CommentsScreen extends StatefulWidget {
@@ -2090,18 +2202,19 @@ class CommentsScreen extends StatefulWidget {
   });
 
   @override
-  State<CommentsScreen> createState() =>
-      _CommentsScreenState();
+  State<CommentsScreen> createState() => _CommentsScreenState();
 }
 
 class _CommentsScreenState extends State<CommentsScreen> {
   final commentController = TextEditingController();
+  final ReportService _report = ReportService();
 
   List<Map<String, dynamic>> comments = [];
   bool loading = true;
   bool sending = false;
 
   Map<String, dynamic>? _replyTo;
+  Map<String, dynamic>? _editing;
 
   @override
   void initState() {
@@ -2120,7 +2233,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
       final response = await supabase
           .from('comments')
           .select(
-            'id, post_id, user_id, content, created_at, parent_id, '
+            'id, post_id, user_id, content, created_at, parent_id, edited_at, '
             'profiles(username, full_name, avatar_url)',
           )
           .eq('post_id', widget.postId)
@@ -2153,9 +2266,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
           .maybeSingle();
 
       final postOwnerId = post?['user_id']?.toString();
-
-      final parentAuthorId =
-          parentComment?['user_id']?.toString();
+      final parentAuthorId = parentComment?['user_id']?.toString();
 
       final profile = await supabase
           .from('profiles')
@@ -2163,19 +2274,12 @@ class _CommentsScreenState extends State<CommentsScreen> {
           .eq('id', currentUser.id)
           .maybeSingle();
 
-      final username =
-          profile?['username']?.toString().trim();
-
-      final displayName =
-          username != null && username.isNotEmpty
-              ? '@$username'
-              : (profile?['full_name']
-                          ?.toString()
-                          .trim()
-                          .isNotEmpty ==
-                      true
-                  ? profile!['full_name'].toString().trim()
-                  : 'Someone');
+      final username = profile?['username']?.toString().trim();
+      final displayName = username != null && username.isNotEmpty
+          ? '@$username'
+          : (profile?['full_name']?.toString().trim().isNotEmpty == true
+              ? profile!['full_name'].toString().trim()
+              : 'Someone');
 
       final notified = <String>{};
 
@@ -2223,6 +2327,27 @@ class _CommentsScreenState extends State<CommentsScreen> {
     setState(() => sending = true);
 
     try {
+      // EDIT mode
+      if (_editing != null) {
+        await supabase
+            .from('comments')
+            .update({
+              'content': text,
+              'edited_at': DateTime.now().toIso8601String(),
+            })
+            .eq('id', _editing!['id']);
+
+        commentController.clear();
+        if (!mounted) return;
+        setState(() {
+          _editing = null;
+          _replyTo = null;
+        });
+        await loadComments();
+        return;
+      }
+
+      // NEW comment
       String finalContent = text;
 
       if (_replyTo != null) {
@@ -2255,6 +2380,152 @@ class _CommentsScreenState extends State<CommentsScreen> {
     } finally {
       if (mounted) setState(() => sending = false);
     }
+  }
+
+  Future<void> _deleteComment(Map<String, dynamic> comment) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete comment?'),
+        content: const Text('This cannot be undone.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await supabase
+          .from('comments')
+          .delete()
+          .eq('id', comment['id']);
+      await loadComments();
+    } catch (e) {
+      if (!mounted) return;
+      showMessage('Delete failed: $e');
+    }
+  }
+
+  Future<void> _reportComment(Map<String, dynamic> comment) async {
+    final reason = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                'Report comment',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+            ),
+            for (final r in const [
+              'Spam',
+              'Harassment',
+              'Hate speech',
+              'Misinformation',
+              'Other',
+            ])
+              ListTile(
+                title: Text(r),
+                onTap: () => Navigator.pop(context, r),
+              ),
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+    );
+
+    if (reason == null) return;
+
+    try {
+      await _report.reportComment(
+        commentId: comment['id'].toString(),
+        reason: reason,
+      );
+      if (!mounted) return;
+      showMessage('Report submitted — thanks');
+    } catch (e) {
+      if (!mounted) return;
+      showMessage('Report failed: $e');
+    }
+  }
+
+  void _showCommentActions(
+    Map<String, dynamic> comment,
+    bool isMine,
+  ) async {
+    await showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isMine)
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: const Text('Edit'),
+                onTap: () {
+                  Navigator.pop(context);
+                  setState(() {
+                    _editing = comment;
+                    _replyTo = null;
+                    commentController.text =
+                        comment['content']?.toString() ?? '';
+                  });
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.reply),
+              title: const Text('Reply'),
+              onTap: () {
+                Navigator.pop(context);
+                setState(() {
+                  _replyTo = comment;
+                  _editing = null;
+                });
+              },
+            ),
+            if (isMine)
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: Colors.red),
+                title: const Text(
+                  'Delete',
+                  style: TextStyle(color: Colors.red),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _deleteComment(comment);
+                },
+              ),
+            if (!isMine)
+              ListTile(
+                leading: const Icon(Icons.flag_outlined, color: Colors.red),
+                title: const Text(
+                  'Report',
+                  style: TextStyle(color: Colors.red),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _reportComment(comment);
+                },
+              ),
+            const SizedBox(height: 10),
+          ],
+        ),
+      ),
+    );
   }
 
   String getUsername(Map<String, dynamic> comment) {
@@ -2292,6 +2563,8 @@ class _CommentsScreenState extends State<CommentsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final me = supabase.auth.currentUser?.id;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Comments')),
       body: Column(
@@ -2300,21 +2573,22 @@ class _CommentsScreenState extends State<CommentsScreen> {
             child: loading
                 ? const Center(child: CircularProgressIndicator())
                 : comments.isEmpty
-                    ? const Center(
-                        child: Text('No comments yet.'),
-                      )
+                    ? const Center(child: Text('No comments yet.'))
                     : ListView.builder(
                         padding: const EdgeInsets.all(10),
                         itemCount: comments.length,
                         itemBuilder: (context, index) {
                           final comment = comments[index];
                           final avatar = getAvatar(comment);
+                          final isMine =
+                              comment['user_id']?.toString() == me;
+                          final edited =
+                              comment['edited_at'] != null;
+
                           return Padding(
-                            padding:
-                                const EdgeInsets.only(bottom: 12),
+                            padding: const EdgeInsets.only(bottom: 12),
                             child: Row(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 CircleAvatar(
                                   radius: 20,
@@ -2322,61 +2596,53 @@ class _CommentsScreenState extends State<CommentsScreen> {
                                       ? NetworkImage(avatar)
                                       : null,
                                   child: avatar == null
-                                      ? const Icon(
-                                          Icons.person,
-                                          size: 20,
-                                        )
+                                      ? const Icon(Icons.person, size: 20)
                                       : null,
                                 ),
                                 const SizedBox(width: 10),
                                 Expanded(
-                                  child: Container(
-                                    padding:
-                                        const EdgeInsets.all(10),
-                                    decoration: BoxDecoration(
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .surfaceContainerHighest,
-                                      borderRadius:
-                                          BorderRadius.circular(14),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          getUsername(comment),
-                                          style: const TextStyle(
-                                            fontWeight:
-                                                FontWeight.bold,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          comment['content']
-                                                  ?.toString() ??
-                                              '',
-                                        ),
-                                        const SizedBox(height: 4),
-                                        GestureDetector(
-                                          onTap: () => setState(
-                                            () => _replyTo = comment,
-                                          ),
-                                          child: Text(
-                                            'Reply',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              fontWeight:
-                                                  FontWeight.w600,
-                                              color: Theme.of(
-                                                context,
-                                              )
-                                                  .colorScheme
-                                                  .primary,
+                                  child: GestureDetector(
+                                    onLongPress: () =>
+                                        _showCommentActions(comment, isMine),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context)
+                                            .colorScheme
+                                            .surfaceContainerHighest,
+                                        borderRadius:
+                                            BorderRadius.circular(14),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            getUsername(comment),
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
                                             ),
                                           ),
-                                        ),
-                                      ],
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            comment['content']?.toString() ??
+                                                '',
+                                          ),
+                                          if (edited)
+                                            Padding(
+                                              padding:
+                                                  const EdgeInsets.only(top: 4),
+                                              child: Text(
+                                                '(edited)',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  color: Colors.grey.shade600,
+                                                  fontStyle: FontStyle.italic,
+                                                ),
+                                              ),
+                                            ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -2389,8 +2655,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
           SafeArea(
             top: false,
             child: Padding(
-              padding:
-                  const EdgeInsets.fromLTRB(10, 6, 10, 10),
+              padding: const EdgeInsets.fromLTRB(10, 6, 10, 10),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -2410,9 +2675,31 @@ class _CommentsScreenState extends State<CommentsScreen> {
                           ),
                           IconButton(
                             icon: const Icon(Icons.close, size: 18),
-                            onPressed: () => setState(
-                              () => _replyTo = null,
+                            onPressed: () => setState(() => _replyTo = null),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (_editing != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Editing your comment',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.blue.shade600,
+                              ),
                             ),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.close, size: 18),
+                            onPressed: () => setState(() {
+                              _editing = null;
+                              commentController.clear();
+                            }),
                           ),
                         ],
                       ),
@@ -2424,8 +2711,7 @@ class _CommentsScreenState extends State<CommentsScreen> {
                           controller: commentController,
                           maxLines: 3,
                           minLines: 1,
-                          textInputAction:
-                              TextInputAction.newline,
+                          textInputAction: TextInputAction.newline,
                           decoration: const InputDecoration(
                             hintText: 'Write a comment...',
                             border: OutlineInputBorder(),
@@ -2434,14 +2720,12 @@ class _CommentsScreenState extends State<CommentsScreen> {
                       ),
                       const SizedBox(width: 8),
                       IconButton.filled(
-                        onPressed:
-                            sending ? null : addComment,
+                        onPressed: sending ? null : addComment,
                         icon: sending
                             ? const SizedBox(
                                 width: 20,
                                 height: 20,
-                                child:
-                                    CircularProgressIndicator(
+                                child: CircularProgressIndicator(
                                   strokeWidth: 2,
                                 ),
                               )
