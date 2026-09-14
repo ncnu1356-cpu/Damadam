@@ -25,11 +25,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
-  assets:
-    - assets/
 
 # ============================================================
-# APP ICON
+# APP ICON CONFIG
+# (activated when we run: flutter pub run flutter_launcher_icons)
 # ============================================================
 flutter_launcher_icons:
   android: "launcher_icon"
@@ -40,7 +39,8 @@ flutter_launcher_icons:
   adaptive_icon_foreground: "assets/icon_fg.png"
 
 # ============================================================
-# SPLASH SCREEN
+# SPLASH CONFIG
+# (activated when we run: flutter pub run flutter_native_splash:create)
 # ============================================================
 flutter_native_splash:
   color: "#1E88E5"
